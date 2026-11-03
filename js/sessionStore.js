@@ -290,6 +290,42 @@ class SessionStore {
 
   // --- Participant & Leaderboard ---
 
+  static getCurrentParticipantId() {
+    return localStorage.getItem(`${STORAGE_PREFIX}current_participant_id`) || '';
+  }
+
+  static getCurrentParticipant(sessionId = 'session-demo') {
+    const id = this.getCurrentParticipantId();
+    if (id) {
+      const part = this.getParticipant(sessionId, id);
+      if (part) return part;
+    }
+    const activeName = this.getActiveContributor();
+    return this.getParticipantByName(sessionId, activeName);
+  }
+
+  static getParticipantByName(sessionId = 'session-demo', name = '') {
+    if (!name) return null;
+    const target = name.trim().toLowerCase();
+    const all = this.getAllParticipants(sessionId);
+    return all.find(p => (p.name || '').trim().toLowerCase() === target) || null;
+  }
+
+  static getAllParticipants(sessionId = 'session-demo') {
+    const prefix = `${STORAGE_PREFIX}participant_${sessionId}_`;
+    const participants = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith(prefix)) {
+        try {
+          const item = JSON.parse(localStorage.getItem(key));
+          if (item && item.id) participants.push(item);
+        } catch {}
+      }
+    }
+    return participants;
+  }
+
   static registerParticipant(sessionId, name, email = '', rollNumber = '', githubUsername = '') {
     const session = this.getSession(sessionId);
     if (!session) return { success: false, message: 'Session does not exist.' };
@@ -307,7 +343,8 @@ class SessionStore {
       isOnline: true,
       currentMissionIndex: 0,
       completedMissions: [],
-      verifiedXP: 0
+      verifiedXP: 0,
+      focusViolations: 0
     };
 
     localStorage.setItem(
@@ -319,13 +356,18 @@ class SessionStore {
     this.addCustomContributor(name, rollNumber, githubUsername, email);
     this.setActiveContributor(name);
 
+    this.recordActivity(this.getActiveRepoId(), name.trim(), 'session', `Registered for workshop challenge`);
     this.broadcast({ type: 'PARTICIPANT_REGISTERED', participant: newParticipant });
     return { success: true, participant: newParticipant, message: 'Welcome to Open Sourcery Arena!' };
   }
 
   static getParticipant(sessionId, participantId) {
+    if (!participantId) return null;
     const raw = localStorage.getItem(`${STORAGE_PREFIX}participant_${sessionId}_${participantId}`);
-    if (!raw) return null;
+    if (!raw) {
+      // Fallback: check if participantId was actually a name
+      return this.getParticipantByName(sessionId, participantId);
+    }
     try {
       return JSON.parse(raw);
     } catch {
@@ -333,28 +375,64 @@ class SessionStore {
     }
   }
 
+  static recordParticipantViolation(sessionId, participantId, reason = 'Tab switch / focus loss') {
+    let participant = this.getParticipant(sessionId, participantId);
+    if (!participant) {
+      const activeName = this.getActiveContributor();
+      participant = this.getParticipantByName(sessionId, activeName);
+    }
+    if (!participant) return;
+
+    participant.focusViolations = (participant.focusViolations || 0) + 1;
+    participant.lastActiveAt = Date.now();
+    localStorage.setItem(
+      `${STORAGE_PREFIX}participant_${sessionId}_${participant.id}`,
+      JSON.stringify(participant)
+    );
+    this.recordActivity(this.getActiveRepoId(), participant.name, 'security', `Focus alert #${participant.focusViolations} (${reason})`);
+    this.broadcast({ type: 'FOCUS_VIOLATION', participantId: participant.id, violations: participant.focusViolations });
+  }
+
   static awardMission(sessionId, participantId, missionId, evidence = {}) {
-    const participant = this.getParticipant(sessionId, participantId);
+    let participant = this.getParticipant(sessionId, participantId);
+    if (!participant) {
+      // Fallback to active contributor
+      const activeName = this.getActiveContributor();
+      participant = this.getParticipantByName(sessionId, activeName);
+    }
     if (!participant) return { success: false, message: 'Participant not found.' };
 
     const mission = DEFAULT_MISSIONS.find(m => m.id === missionId);
     if (!mission) return { success: false, message: 'Mission not found.' };
 
+    if (!participant.completedMissions) participant.completedMissions = [];
+
     if (participant.completedMissions.includes(missionId)) {
       return { success: true, xpAwarded: 0, totalXP: participant.verifiedXP, message: 'Mission already awarded.' };
     }
 
-    const newXP = participant.verifiedXP + mission.xp;
+    const newXP = (participant.verifiedXP || 0) + mission.xp;
     participant.verifiedXP = newXP;
     participant.completedMissions.push(missionId);
     participant.lastActiveAt = Date.now();
 
     localStorage.setItem(
-      `${STORAGE_PREFIX}participant_${sessionId}_${participantId}`,
+      `${STORAGE_PREFIX}participant_${sessionId}_${participant.id}`,
       JSON.stringify(participant)
     );
 
-    this.broadcast({ type: 'MISSION_AWARDED', sessionId, participantId, missionId, newXP });
+    // Sync XP to custom contributor record
+    const contributorRaw = localStorage.getItem(`${STORAGE_PREFIX}custom_contributor_${participant.name}`);
+    if (contributorRaw) {
+      try {
+        const contributor = JSON.parse(contributorRaw);
+        contributor.xp = newXP;
+        localStorage.setItem(`${STORAGE_PREFIX}custom_contributor_${participant.name}`, JSON.stringify(contributor));
+      } catch {}
+    }
+
+    this.recordActivity(this.getActiveRepoId(), participant.name, 'mission', `Completed Mission ${mission.number}: ${mission.title} (+${mission.xp} XP)`);
+    this.broadcast({ type: 'MISSION_AWARDED', sessionId, participantId: participant.id, missionId, newXP });
     return {
       success: true,
       xpAwarded: mission.xp,
@@ -363,22 +441,132 @@ class SessionStore {
     };
   }
 
-  static getLeaderboard(sessionId) {
+  static adjustParticipantXP(sessionId, participantId, deltaXP, reason = 'Admin Adjustment') {
+    let participant = this.getParticipant(sessionId, participantId);
+    if (!participant) return { success: false, message: 'Participant not found.' };
+
+    const oldXP = participant.verifiedXP || 0;
+    const newXP = Math.max(0, oldXP + deltaXP);
+    participant.verifiedXP = newXP;
+    participant.lastActiveAt = Date.now();
+
+    localStorage.setItem(
+      `${STORAGE_PREFIX}participant_${sessionId}_${participant.id}`,
+      JSON.stringify(participant)
+    );
+
+    const contributorRaw = localStorage.getItem(`${STORAGE_PREFIX}custom_contributor_${participant.name}`);
+    if (contributorRaw) {
+      try {
+        const contributor = JSON.parse(contributorRaw);
+        contributor.xp = newXP;
+        localStorage.setItem(`${STORAGE_PREFIX}custom_contributor_${participant.name}`, JSON.stringify(contributor));
+      } catch {}
+    }
+
+    const sign = deltaXP >= 0 ? '+' : '';
+    this.recordActivity(this.getActiveRepoId(), 'Admin (Vivek)', 'audit', `Adjusted XP for ${participant.name}: ${sign}${deltaXP} XP (${reason}). Total: ${newXP} XP`);
+    this.broadcast({ type: 'XP_ADJUSTED', sessionId, participantId: participant.id, newXP, deltaXP });
+    return { success: true, newXP, deltaXP };
+  }
+
+  static removeParticipant(sessionId, participantId) {
+    let participant = this.getParticipant(sessionId, participantId);
+    if (!participant) {
+      // Try by matching participantId to id
+      const all = this.getAllParticipants(sessionId);
+      participant = all.find(p => p.id === participantId || `part_${p.name}` === participantId);
+    }
+    const name = participant ? participant.name : participantId;
+    const realId = participant ? participant.id : participantId;
+
+    localStorage.removeItem(`${STORAGE_PREFIX}participant_${sessionId}_${realId}`);
+    localStorage.removeItem(`${STORAGE_PREFIX}custom_contributor_${name}`);
+
+    // Track in disqualified list so they never re-appear on leaderboard
+    try {
+      const disq = JSON.parse(localStorage.getItem(`${STORAGE_PREFIX}disqualified_names`) || '[]');
+      if (name && !disq.includes(name.toLowerCase())) {
+        disq.push(name.toLowerCase());
+        localStorage.setItem(`${STORAGE_PREFIX}disqualified_names`, JSON.stringify(disq));
+      }
+    } catch {}
+
+    // If active contributor was this participant, reset to Vivek
+    if (this.getActiveContributor() === name) {
+      this.setActiveContributor('Vivek');
+    }
+
+    // If current participant was removed, reset active participant state
+    if (localStorage.getItem(`${STORAGE_PREFIX}current_participant_id`) === realId) {
+      localStorage.removeItem(`${STORAGE_PREFIX}current_participant_id`);
+      localStorage.removeItem('open_sourcery_user_registered');
+    }
+
+    this.recordActivity(this.getActiveRepoId(), 'Admin (Vivek)', 'audit', `Disqualified/removed participant ${name} from leaderboard.`);
+    this.broadcast({ type: 'PARTICIPANT_REMOVED', sessionId, participantId: realId, name });
+    return { success: true, name };
+  }
+
+  static getLeaderboard(sessionId = 'session-demo') {
+    const participants = this.getAllParticipants(sessionId);
     const contributors = this.getAllContributors();
-    return contributors
-      .sort((a, b) => b.xp - a.xp)
-      .map((c, index) => ({
-        rank: index + 1,
-        participantId: `part_${c.name}`,
-        name: c.name,
-        email: c.email || '',
-        rollNumber: c.rollNumber || 'CONTRIBUTOR',
-        githubUsername: c.github || '',
-        verifiedXP: c.xp,
-        completedCount: Math.min(8, Math.floor(c.xp / 70)),
-        lastCompletedAt: Date.now(),
-        isOnline: c.isOnline
-      }));
+    const map = new Map();
+
+    let disqualified = [];
+    try {
+      disqualified = JSON.parse(localStorage.getItem(`${STORAGE_PREFIX}disqualified_names`) || '[]');
+    } catch {}
+
+    // Index all registered participants
+    participants.forEach(p => {
+      if (p.name && disqualified.includes(p.name.toLowerCase())) return;
+
+      const violations = p.focusViolations || (p.name === this.getActiveContributor() ? parseInt(localStorage.getItem('open_sourcery_tab_switch_count') || '0', 10) : 0);
+      map.set(p.name.toLowerCase(), {
+        participantId: p.id,
+        name: p.name,
+        email: p.email || '',
+        rollNumber: p.rollNumber || 'PARTICIPANT',
+        githubUsername: p.githubUsername || '',
+        verifiedXP: p.verifiedXP || 0,
+        completedCount: (p.completedMissions || []).length,
+        completedMissions: p.completedMissions || [],
+        focusViolations: violations,
+        lastCompletedAt: p.lastActiveAt || Date.now(),
+        isOnline: Boolean(p.isOnline),
+        registeredAt: p.registeredAt || Date.now()
+      });
+    });
+
+    // Merge in any custom contributors that weren't stored as participant record
+    contributors.forEach(c => {
+      const key = (c.name || '').toLowerCase();
+      if (!map.has(key) && c.name && !disqualified.includes(key)) {
+        map.set(key, {
+          participantId: `part_${c.name}`,
+          name: c.name,
+          email: c.email || '',
+          rollNumber: c.rollNumber || 'CONTRIBUTOR',
+          githubUsername: c.github || '',
+          verifiedXP: c.xp || 0,
+          completedCount: Math.min(8, Math.floor((c.xp || 0) / 70)),
+          completedMissions: [],
+          focusViolations: 0,
+          lastCompletedAt: Date.now(),
+          isOnline: Boolean(c.isOnline),
+          registeredAt: Date.now()
+        });
+      }
+    });
+
+    const list = Array.from(map.values());
+    list.sort((a, b) => b.verifiedXP - a.verifiedXP);
+
+    return list.map((entry, index) => ({
+      ...entry,
+      rank: index + 1
+    }));
   }
 
   static getAuditLogs(sessionId) {

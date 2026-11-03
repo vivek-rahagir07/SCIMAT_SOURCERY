@@ -41,11 +41,12 @@ document.addEventListener('DOMContentLoaded', () => {
 function initApp() {
   SessionStore.initDefaultSession();
 
-  // Check if participant has completed onboarding
+  // Check if participant has completed onboarding or admin is authenticated
   const isRegistered = localStorage.getItem('open_sourcery_user_registered') === 'true';
+  const isAdmin = isAdminAuthenticated();
   const overlay = document.getElementById('onboarding-overlay');
 
-  if (!isRegistered) {
+  if (!isRegistered && !isAdmin) {
     if (overlay) overlay.style.display = 'flex';
   } else {
     if (overlay) overlay.style.display = 'none';
@@ -54,6 +55,54 @@ function initApp() {
   currentContributor = SessionStore.getActiveContributor();
   loadActiveRepository();
   renderAll();
+}
+
+function switchOnboardingMode(mode) {
+  const pBtn = document.getElementById('tab-btn-participant');
+  const aBtn = document.getElementById('tab-btn-admin');
+  const pPanel = document.getElementById('onboarding-participant-panel');
+  const aPanel = document.getElementById('onboarding-admin-panel');
+
+  if (mode === 'admin') {
+    if (pBtn) pBtn.classList.remove('active');
+    if (aBtn) aBtn.classList.add('active');
+    if (pPanel) pPanel.style.display = 'none';
+    if (aPanel) aPanel.style.display = 'block';
+  } else {
+    if (pBtn) pBtn.classList.add('active');
+    if (aBtn) aBtn.classList.remove('active');
+    if (pPanel) pPanel.style.display = 'block';
+    if (aPanel) aPanel.style.display = 'none';
+  }
+}
+
+function submitLandingAdminLogin(e) {
+  e.preventDefault();
+  const emailInput = document.getElementById('landing-admin-email');
+  const passInput = document.getElementById('landing-admin-password');
+  const errorEl = document.getElementById('landing-admin-error');
+
+  const email = (emailInput ? emailInput.value : '').trim().toLowerCase();
+  const pass = passInput ? passInput.value : '';
+
+  if (email === ADMIN_CONFIG.email.toLowerCase() && pass === ADMIN_CONFIG.pass) {
+    sessionStorage.setItem('open_sourcery_admin_auth', 'true');
+    const overlay = document.getElementById('onboarding-overlay');
+    if (overlay) overlay.style.display = 'none';
+
+    loadActiveRepository();
+    renderAll();
+    updateLeaderboardUI();
+    updateAdminUI();
+    openModal('admin-modal');
+    showToast('Admin authentication successful! Welcome, Vivek.', 'success');
+  } else {
+    if (errorEl) {
+      errorEl.textContent = 'Invalid Admin ID or Password. Access denied.';
+      errorEl.style.display = 'block';
+    }
+    showToast('Admin authentication failed. Access denied.', 'error');
+  }
 }
 
 function submitOnboardingRegistration(e) {
@@ -1651,9 +1700,10 @@ function renderMissionsDrawer() {
   const xpNumbersEl = document.getElementById('xp-progress-numbers');
   const missionsCountBadge = document.getElementById('missions-count-badge');
 
-  const contributors = SessionStore.getAllContributors();
-  const cur = contributors.find(c => c.name === currentContributor) || { xp: 0 };
-  const totalXP = cur.xp || 0;
+  const curPart = SessionStore.getCurrentParticipant('session-demo') || SessionStore.getParticipantByName('session-demo', currentContributor);
+  const completedMissions = curPart ? (curPart.completedMissions || []) : [];
+  const completedCount = completedMissions.length;
+  const totalXP = curPart ? (curPart.verifiedXP || 0) : 0;
   const maxXP = DEFAULT_MISSIONS.reduce((sum, m) => sum + m.xp, 0);
 
   if (xpFillEl) {
@@ -1666,18 +1716,20 @@ function renderMissionsDrawer() {
   }
 
   if (missionsCountBadge) {
-    missionsCountBadge.textContent = `${Math.min(8, Math.floor(totalXP / 70))}/8 Completed`;
+    missionsCountBadge.textContent = `${completedCount}/8 Completed`;
   }
 
   if (!missionsListEl) return;
 
   missionsListEl.innerHTML = DEFAULT_MISSIONS.map(m => {
+    const isDone = completedMissions.includes(m.id);
     return `
-      <div class="mission-card" id="card-${m.id}">
+      <div class="mission-card ${isDone ? 'completed' : ''}" id="card-${m.id}">
         <div class="mission-card-top">
           <div style="display: flex; align-items: center; gap: 0.5rem;">
             <span class="mission-num-badge">Mission ${m.number}</span>
             <span class="badge" style="font-size: 0.65rem;">${m.difficulty}</span>
+            ${isDone ? '<span class="badge" style="background: rgba(54, 228, 212, 0.2); color: var(--accent-cyan);">✓ Completed</span>' : ''}
           </div>
           <span class="mission-card-xp">+${m.xp} XP</span>
         </div>
@@ -1694,7 +1746,9 @@ function renderMissionsDrawer() {
         </div>
 
         <div style="display: flex; justify-content: flex-end; align-items: center; margin-top: 0.5rem; gap: 0.5rem;">
-          <button class="btn btn-sm btn-cyan" onclick="manualVerifyMission('${m.id}')">Verify</button>
+          <button class="btn btn-sm btn-cyan" onclick="manualVerifyMission('${m.id}')">
+            ${isDone ? 'Re-Verify' : 'Verify'}
+          </button>
         </div>
       </div>
     `;
@@ -1707,12 +1761,28 @@ function toggleHint(hintId) {
 }
 
 function manualVerifyMission(missionId) {
+  if (!git) return;
   const state = git.getState();
   const res = MissionValidator.validateMission(missionId, state, interactionHistory);
 
   if (res.isCompleted) {
-    showToast(res.message, 'success');
-    triggerConfetti(75);
+    const curPart = SessionStore.getCurrentParticipant('session-demo') || SessionStore.getParticipantByName('session-demo', currentContributor);
+    const partId = curPart ? curPart.id : currentContributor;
+    const awardRes = SessionStore.awardMission('session-demo', partId, missionId, res.evidence);
+
+    const card = document.getElementById(`card-${missionId}`);
+    if (card) card.classList.add('completed');
+
+    updateContributorUI();
+    renderMissionsDrawer();
+    updateLeaderboardUI();
+
+    if (awardRes.xpAwarded > 0) {
+      showToast(awardRes.message, 'success');
+      triggerConfetti(75);
+    } else {
+      showToast(`Mission already verified and awarded! Score: ${awardRes.totalXP} XP`, 'info');
+    }
   } else {
     showToast(res.message, 'error');
   }
@@ -1721,27 +1791,47 @@ function manualVerifyMission(missionId) {
 function checkAllMissions() {
   if (!git) return;
   const state = git.getState();
+  const curPart = SessionStore.getCurrentParticipant('session-demo') || SessionStore.getParticipantByName('session-demo', currentContributor);
+  const partId = curPart ? curPart.id : currentContributor;
+
+  let anyNewAward = false;
 
   for (const m of DEFAULT_MISSIONS) {
     const res = MissionValidator.validateMission(m.id, state, interactionHistory);
     if (res.isCompleted) {
+      const awardRes = SessionStore.awardMission('session-demo', partId, m.id, res.evidence);
       const card = document.getElementById(`card-${m.id}`);
-      if (card && !card.classList.contains('completed')) {
-        card.classList.add('completed');
-        showToast(res.message, 'success');
+
+      if (awardRes.xpAwarded > 0) {
+        anyNewAward = true;
+        if (card) card.classList.add('completed');
+        showToast(awardRes.message, 'success');
         triggerConfetti(70);
+      } else if (card && !card.classList.contains('completed')) {
+        card.classList.add('completed');
       }
     }
   }
+
+  if (anyNewAward) {
+    updateContributorUI();
+    renderMissionsDrawer();
+    updateLeaderboardUI();
+  }
 }
 
-// --- Leaderboard Modal ---
+// --- Leaderboard & Participant Moderation ---
 
 function updateLeaderboardUI() {
   const tbody = document.getElementById('leaderboard-table-body');
   if (!tbody) return;
 
   const entries = SessionStore.getLeaderboard('session-demo');
+  if (entries.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--text-dim); padding: 1.5rem;">No registered participants yet.</td></tr>`;
+    return;
+  }
+
   tbody.innerHTML = entries.map(e => {
     let rankBadgeClass = 'rank-other';
     if (e.rank === 1) rankBadgeClass = 'rank-1';
@@ -1749,6 +1839,9 @@ function updateLeaderboardUI() {
     else if (e.rank === 3) rankBadgeClass = 'rank-3';
 
     const isCurrent = e.name === currentContributor;
+    const focusViolationBadge = (e.focusViolations && e.focusViolations > 0)
+      ? `<span class="badge" style="background: rgba(248, 81, 73, 0.2); color: var(--accent-red);" title="Focus / tab switch violations detected">⚠️ ${e.focusViolations} Alerts</span>`
+      : `<span style="color: var(--accent-green); font-size: 0.75rem;">✓ Clean</span>`;
 
     return `
       <tr style="${isCurrent ? 'background: rgba(54, 228, 212, 0.08); font-weight: 600;' : ''}">
@@ -1758,19 +1851,269 @@ function updateLeaderboardUI() {
             <span>${escapeHtml(e.name)}</span>
             ${isCurrent ? '<span class="badge" style="background: rgba(54, 228, 212, 0.2); color: var(--accent-cyan);">Active</span>' : ''}
           </div>
-          <div style="font-size: 0.75rem; color: var(--text-dim);">${e.rollNumber || ''}</div>
+          <div style="font-size: 0.75rem; color: var(--text-dim);">${escapeHtml(e.rollNumber || '')} ${e.githubUsername ? `(@${escapeHtml(e.githubUsername)})` : ''}</div>
         </td>
+        <td style="font-size: 0.8rem; color: var(--text-muted); font-family: var(--font-mono);">${escapeHtml(e.email || 'N/A')}</td>
         <td style="font-family: var(--font-mono); color: var(--accent-cyan); font-weight: bold;">${e.verifiedXP} XP</td>
         <td>${e.completedCount} / 8</td>
+        <td>${focusViolationBadge}</td>
         <td>
           <span style="display: inline-flex; align-items: center; gap: 0.3rem; font-size: 0.75rem; color: ${e.isOnline ? 'var(--accent-green)' : 'var(--text-dim)'};">
             <span style="width: 6px; height: 6px; border-radius: 50%; background: ${e.isOnline ? 'var(--accent-green)' : 'var(--text-dim)'};"></span>
             ${e.isOnline ? 'Live' : 'Offline'}
           </span>
         </td>
+        <td style="text-align: right; white-space: nowrap;">
+          <button class="btn btn-xs btn-cyan" onclick="openParticipantDossier('${escapeHtml(e.participantId)}', '${escapeHtml(e.name)}')" title="Trace work, commits, PRs, issues and alerts">
+            🔍 Trace
+          </button>
+          <button class="btn btn-xs" onclick="adminPromptAdjustXP('${escapeHtml(e.participantId)}', '${escapeHtml(e.name)}')" title="Adjust verified XP score">
+            ✏️ XP
+          </button>
+          <button class="btn btn-xs btn-danger" onclick="adminRemoveParticipant('${escapeHtml(e.participantId)}', '${escapeHtml(e.name)}')" title="Remove / Disqualify from workshop">
+            🗑️ Remove
+          </button>
+        </td>
       </tr>
     `;
   }).join('');
+}
+
+function openParticipantDossier(participantId, name) {
+  const part = SessionStore.getParticipant('session-demo', participantId) ||
+               SessionStore.getParticipantByName('session-demo', name) || {
+                 id: participantId,
+                 name: name,
+                 email: 'N/A',
+                 rollNumber: 'N/A',
+                 githubUsername: '',
+                 verifiedXP: 0,
+                 completedMissions: [],
+                 focusViolations: 0
+               };
+
+  const state = git ? git.getState() : (activeRepo || {});
+  const userCommits = (state.commits || []).filter(c => (c.author || '').trim().toLowerCase() === name.trim().toLowerCase());
+  const userPRs = (state.pullRequests || []).filter(pr => (pr.author || '').trim().toLowerCase() === name.trim().toLowerCase());
+  const userIssues = (state.issues || []).filter(i => (i.author || '').trim().toLowerCase() === name.trim().toLowerCase());
+  const userActivities = (state.activities || []).filter(a => (a.user || '').trim().toLowerCase() === name.trim().toLowerCase());
+
+  const completedMissions = part.completedMissions || [];
+  const focusViolations = part.focusViolations || (name === currentContributor ? parseInt(localStorage.getItem('open_sourcery_tab_switch_count') || '0', 10) : 0);
+
+  const titleEl = document.getElementById('dossier-modal-title');
+  if (titleEl) titleEl.textContent = `Participant Work Dossier — ${name}`;
+
+  const bodyEl = document.getElementById('dossier-modal-body');
+  if (!bodyEl) return;
+
+  bodyEl.innerHTML = `
+    <!-- Top Profile & Quick Actions Banner -->
+    <div class="dossier-header-card">
+      <div style="display: flex; align-items: center; gap: 0.85rem;">
+        <div class="user-avatar" style="width: 48px; height: 48px; font-size: 1.25rem;">${(name || 'P').charAt(0).toUpperCase()}</div>
+        <div>
+          <div style="display: flex; align-items: center; gap: 0.5rem;">
+            <h3 style="margin: 0; font-size: 1.15rem; color: var(--text-main);">${escapeHtml(name)}</h3>
+            <span class="badge" style="background: rgba(54, 228, 212, 0.2); color: var(--accent-cyan); font-size: 0.7rem;">${escapeHtml(part.rollNumber || 'STUDENT')}</span>
+          </div>
+          <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.2rem;">
+            <span>📧 ${escapeHtml(part.email || 'No email registered')}</span>
+            ${part.githubUsername ? `<span style="margin-left: 0.75rem;">🐙 @${escapeHtml(part.githubUsername)}</span>` : ''}
+          </div>
+        </div>
+      </div>
+
+      <div style="display: flex; gap: 0.4rem; flex-wrap: wrap;">
+        <button class="btn btn-sm btn-cyan" onclick="adminPromptAdjustXP('${escapeHtml(part.id)}', '${escapeHtml(name)}')">
+          ✏️ Adjust XP
+        </button>
+        <button class="btn btn-sm" onclick="switchContributorTo('${escapeHtml(name)}')">
+          🔄 Switch View
+        </button>
+        <button class="btn btn-sm btn-danger" onclick="adminRemoveParticipant('${escapeHtml(part.id)}', '${escapeHtml(name)}')">
+          🗑️ Disqualify
+        </button>
+      </div>
+    </div>
+
+    <!-- Metrics Grid -->
+    <div class="dossier-stats-grid">
+      <div class="dossier-stat-box">
+        <div class="dossier-stat-val">${part.verifiedXP || 0} XP</div>
+        <div class="dossier-stat-lbl">Verified Score</div>
+      </div>
+      <div class="dossier-stat-box">
+        <div class="dossier-stat-val" style="color: var(--accent-green);">${completedMissions.length} / 8</div>
+        <div class="dossier-stat-lbl">Missions Cleared</div>
+      </div>
+      <div class="dossier-stat-box">
+        <div class="dossier-stat-val" style="color: var(--accent-blue);">${userCommits.length}</div>
+        <div class="dossier-stat-lbl">Authored Commits</div>
+      </div>
+      <div class="dossier-stat-box">
+        <div class="dossier-stat-val" style="color: var(--accent-purple);">${userPRs.length}</div>
+        <div class="dossier-stat-lbl">Pull Requests</div>
+      </div>
+      <div class="dossier-stat-box">
+        <div class="dossier-stat-val" style="color: ${focusViolations > 0 ? 'var(--accent-red)' : 'var(--accent-green)'};">
+          ${focusViolations}
+        </div>
+        <div class="dossier-stat-lbl">Focus Alerts</div>
+      </div>
+    </div>
+
+    <!-- Missions Breakdown -->
+    <div class="dossier-section-title">
+      <span>🎯 Hands-on Missions Progress (${completedMissions.length}/8 Completed)</span>
+    </div>
+    <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 0.5rem; margin-bottom: 1.25rem;">
+      ${DEFAULT_MISSIONS.map(m => {
+        const done = completedMissions.includes(m.id);
+        return `
+          <div style="background: var(--bg-primary); border: 1px solid ${done ? 'rgba(54, 228, 212, 0.5)' : 'var(--border-color)'}; border-radius: var(--radius-sm); padding: 0.5rem 0.65rem; font-size: 0.75rem;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.25rem;">
+              <strong style="color: ${done ? 'var(--accent-cyan)' : 'var(--text-muted)'};">M${m.number}: ${m.xp} XP</strong>
+              <span>${done ? '✅ Done' : '⏳ Pending'}</span>
+            </div>
+            <div style="color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${escapeHtml(m.title)}">
+              ${escapeHtml(m.title)}
+            </div>
+          </div>
+        `;
+      }).join('')}
+    </div>
+
+    <!-- Commits Authored by Participant -->
+    <div class="dossier-section-title">
+      <span>💻 Commits Authored (${userCommits.length})</span>
+    </div>
+    <div style="max-height: 140px; overflow-y: auto; margin-bottom: 1.25rem;">
+      ${userCommits.length === 0
+        ? '<div style="color: var(--text-dim); font-size: 0.8rem; padding: 0.5rem; background: var(--bg-primary); border-radius: var(--radius-sm);">No commits created by this participant yet.</div>'
+        : userCommits.map(c => `
+          <div class="dossier-item-card">
+            <div>
+              <span style="font-family: var(--font-mono); color: var(--accent-blue); font-weight: bold; margin-right: 0.5rem;">${c.id.substring(0, 7)}</span>
+              <strong>${escapeHtml(c.message)}</strong>
+            </div>
+            <div style="color: var(--text-dim); font-size: 0.75rem;">
+              <span class="badge" style="font-size: 0.65rem;">${escapeHtml(c.branch || 'main')}</span>
+              <span style="margin-left: 0.4rem;">${formatRelativeTime(c.timestamp)}</span>
+            </div>
+          </div>
+        `).join('')}
+    </div>
+
+    <!-- Pull Requests Created by Participant -->
+    <div class="dossier-section-title">
+      <span>🔀 Pull Requests Created (${userPRs.length})</span>
+    </div>
+    <div style="max-height: 140px; overflow-y: auto; margin-bottom: 1.25rem;">
+      ${userPRs.length === 0
+        ? '<div style="color: var(--text-dim); font-size: 0.8rem; padding: 0.5rem; background: var(--bg-primary); border-radius: var(--radius-sm);">No pull requests opened by this participant yet.</div>'
+        : userPRs.map(pr => `
+          <div class="dossier-item-card">
+            <div>
+              <span class="pr-status-pill pr-status-${pr.status}" style="font-size: 0.65rem; padding: 0.15rem 0.4rem; margin-right: 0.4rem;">
+                ${pr.status === 'merged' ? '🟣 Merged' : '🟢 Open'}
+              </span>
+              <strong>#${pr.number} ${escapeHtml(pr.title)}</strong>
+              <span style="color: var(--text-dim); font-size: 0.75rem; margin-left: 0.4rem;">(${escapeHtml(pr.headBranch)} → ${escapeHtml(pr.baseBranch)})</span>
+            </div>
+            <div style="color: var(--text-dim); font-size: 0.75rem;">
+              ${formatRelativeTime(pr.createdAt)}
+            </div>
+          </div>
+        `).join('')}
+    </div>
+
+    <!-- Issues Raised by Participant -->
+    <div class="dossier-section-title">
+      <span>❗ Issues Raised (${userIssues.length})</span>
+    </div>
+    <div style="max-height: 120px; overflow-y: auto; margin-bottom: 1.25rem;">
+      ${userIssues.length === 0
+        ? '<div style="color: var(--text-dim); font-size: 0.8rem; padding: 0.5rem; background: var(--bg-primary); border-radius: var(--radius-sm);">No issues opened by this participant yet.</div>'
+        : userIssues.map(i => `
+          <div class="dossier-item-card">
+            <div>
+              <span class="badge" style="background: ${i.status === 'open' ? 'rgba(54, 228, 212, 0.2)' : 'rgba(139, 148, 158, 0.2)'}; color: ${i.status === 'open' ? 'var(--accent-cyan)' : 'var(--text-dim)'}; font-size: 0.65rem; margin-right: 0.4rem;">
+                ${i.status === 'open' ? '🟢 Open' : '🟣 Closed'}
+              </span>
+              <strong>#${i.number} ${escapeHtml(i.title)}</strong>
+            </div>
+            <div style="color: var(--text-dim); font-size: 0.75rem;">
+              ${formatRelativeTime(i.createdAt)}
+            </div>
+          </div>
+        `).join('')}
+    </div>
+
+    <!-- Activity & Security Alerts Log -->
+    <div class="dossier-section-title">
+      <span>🚨 Activity & Focus Integrity Alerts (${userActivities.length})</span>
+    </div>
+    <div style="max-height: 140px; overflow-y: auto;">
+      ${userActivities.length === 0
+        ? '<div style="color: var(--text-dim); font-size: 0.8rem; padding: 0.5rem; background: var(--bg-primary); border-radius: var(--radius-sm);">No recorded activity history for this participant.</div>'
+        : userActivities.map(a => `
+          <div style="padding: 0.35rem 0.6rem; border-bottom: 1px solid var(--border-color); font-size: 0.75rem; display: flex; justify-content: space-between;">
+            <div>
+              <span class="badge" style="font-size: 0.6rem; margin-right: 0.4rem;">${escapeHtml(a.action || 'activity')}</span>
+              <span>${escapeHtml(a.details || '')}</span>
+            </div>
+            <span style="color: var(--text-dim); font-family: var(--font-mono); font-size: 0.7rem;">${formatRelativeTime(a.timestamp)}</span>
+          </div>
+        `).join('')}
+    </div>
+  `;
+
+  openModal('participant-dossier-modal');
+}
+
+function switchContributorTo(name) {
+  selectContributor(name);
+  closeModal('participant-dossier-modal');
+  showToast(`Switched active workspace view to: ${name}`, 'info');
+}
+
+function adminRemoveParticipant(participantId, name) {
+  if (!confirm(`Are you sure you want to remove and disqualify "${name}" from the workshop and leaderboard? This action cannot be undone.`)) {
+    return;
+  }
+  SessionStore.removeParticipant('session-demo', participantId);
+  closeModal('participant-dossier-modal');
+  updateLeaderboardUI();
+  updateAdminUI();
+  updateContributorUI();
+  showToast(`Participant "${name}" was removed from the leaderboard.`, 'success');
+}
+
+function adminPromptAdjustXP(participantId, name) {
+  const currentPart = SessionStore.getParticipant('session-demo', participantId) ||
+                      SessionStore.getParticipantByName('session-demo', name);
+  const currentXP = currentPart ? (currentPart.verifiedXP || 0) : 0;
+
+  const input = prompt(`Adjust XP for "${name}" (Currently: ${currentXP} XP).\nEnter delta amount (e.g. +50 to reward, -50 to penalize):`, '+50');
+  if (input === null || input.trim() === '') return;
+
+  const delta = parseInt(input.trim(), 10);
+  if (isNaN(delta)) {
+    showToast('Invalid XP value entered. Please enter a valid number (e.g. 50 or -50).', 'error');
+    return;
+  }
+
+  const res = SessionStore.adjustParticipantXP('session-demo', participantId, delta);
+  if (res.success) {
+    updateLeaderboardUI();
+    updateAdminUI();
+    updateContributorUI();
+    if (document.getElementById('participant-dossier-modal')?.classList.contains('open')) {
+      openParticipantDossier(participantId, name);
+    }
+    showToast(`Updated XP for ${name}: ${delta >= 0 ? '+' : ''}${delta} XP. New Total: ${res.newXP} XP`, 'success');
+  }
 }
 
 // --- Admin Workshop Console & Authentication ---
@@ -2032,6 +2375,11 @@ function triggerTabSwitchViolation(reason = 'Tab switch detected') {
 
   let violations = parseInt(localStorage.getItem('open_sourcery_tab_switch_count') || '0', 10) + 1;
   localStorage.setItem('open_sourcery_tab_switch_count', violations.toString());
+
+  const curPart = SessionStore.getCurrentParticipant('session-demo') || SessionStore.getParticipantByName('session-demo', currentContributor);
+  if (curPart) {
+    SessionStore.recordParticipantViolation('session-demo', curPart.id, reason);
+  }
 
   const countDisplay = document.getElementById('tab-switch-count-display');
   if (countDisplay) countDisplay.textContent = violations;

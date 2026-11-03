@@ -15,41 +15,82 @@
         <img src="assets/logo.jpg" alt="SCI-MAT Logo" class="onboarding-logo" />
         <div class="onboarding-title">SCI-MAT <span>OPEN SOURCERY</span></div>
         <div class="onboarding-sub">
-          Interactive Git & GitHub Arena. Register below to initialize your collaborative workspace and launch your 15-minute challenge.
+          Interactive Collaborative Git & GitHub Arena. Choose your portal below to enter.
         </div>
 
-        <div class="onboarding-badge-bar">
-          <span class="onboarding-badge">⏱️ 15 Minutes Sprint</span>
-          <span class="onboarding-badge">🎯 8 Hands-on Missions</span>
-          <span class="onboarding-badge">🏆 900 Max XP</span>
-        </div>
-
-        <form class="onboarding-form" onsubmit="submitOnboardingRegistration(event)">
-          <div class="onboarding-field">
-            <label for="onboarding-name-input">Your Full Name *</label>
-            <input type="text" id="onboarding-name-input" required placeholder="e.g. Vivek Yadav" autocomplete="name" />
-          </div>
-
-          <div class="onboarding-field">
-            <label for="onboarding-email-input">College Email ID *</label>
-            <input type="email" id="onboarding-email-input" required placeholder="e.g. vivek.yadav.25cse@bmu.edu.in" autocomplete="email" />
-          </div>
-
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem;">
-            <div class="onboarding-field">
-              <label for="onboarding-roll-input">Roll No. (Optional)</label>
-              <input type="text" id="onboarding-roll-input" placeholder="e.g. 25CSE042" />
-            </div>
-            <div class="onboarding-field">
-              <label for="onboarding-github-input">GitHub Username (Opt.)</label>
-              <input type="text" id="onboarding-github-input" placeholder="e.g. vivek-bmu" />
-            </div>
-          </div>
-
-          <button type="submit" class="btn btn-primary onboarding-btn">
-            <span>🚀 Start 15-Min Challenge & Enter Arena</span>
+        <!-- Dual Mode Selector Tabs -->
+        <div class="onboarding-mode-tabs">
+          <button type="button" id="tab-btn-participant" class="onboarding-mode-btn active" onclick="switchOnboardingMode('participant')">
+            🎓 Participant Entry
           </button>
-        </form>
+          <button type="button" id="tab-btn-admin" class="onboarding-mode-btn" onclick="switchOnboardingMode('admin')">
+            🛡️ Admin / Organizer Login
+          </button>
+        </div>
+
+        <!-- Participant Registration Panel -->
+        <div id="onboarding-participant-panel">
+          <div class="onboarding-badge-bar">
+            <span class="onboarding-badge">⏱️ 15 Minutes Sprint</span>
+            <span class="onboarding-badge">🎯 8 Hands-on Missions</span>
+            <span class="onboarding-badge">🏆 900 Max XP</span>
+          </div>
+
+          <form class="onboarding-form" onsubmit="submitOnboardingRegistration(event)">
+            <div class="onboarding-field">
+              <label for="onboarding-name-input">Your Full Name *</label>
+              <input type="text" id="onboarding-name-input" required placeholder="e.g. Vivek Yadav" autocomplete="name" />
+            </div>
+
+            <div class="onboarding-field">
+              <label for="onboarding-email-input">College Email ID *</label>
+              <input type="email" id="onboarding-email-input" required placeholder="e.g. vivek.yadav.25cse@bmu.edu.in" autocomplete="email" />
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem;">
+              <div class="onboarding-field">
+                <label for="onboarding-roll-input">Roll No. (Optional)</label>
+                <input type="text" id="onboarding-roll-input" placeholder="e.g. 25CSE042" />
+              </div>
+              <div class="onboarding-field">
+                <label for="onboarding-github-input">GitHub Username (Opt.)</label>
+                <input type="text" id="onboarding-github-input" placeholder="e.g. vivek-bmu" />
+              </div>
+            </div>
+
+            <button type="submit" class="btn btn-primary onboarding-btn">
+              <span>🚀 Start 15-Min Challenge & Enter Arena</span>
+            </button>
+          </form>
+        </div>
+
+        <!-- Organizer / Admin Login Panel -->
+        <div id="onboarding-admin-panel" style="display: none;">
+          <div style="background: rgba(54, 228, 212, 0.08); border: 1px solid rgba(54, 228, 212, 0.3); border-radius: var(--radius-md); padding: 0.75rem 1rem; margin-bottom: 1.25rem; font-size: 0.85rem; color: var(--text-muted); text-align: left;">
+            <strong style="color: var(--accent-cyan); display: block; margin-bottom: 0.25rem;">🛡️ Organizer & Proctor Console</strong>
+            Sign in with verified administrator credentials to monitor live participants, trace their PRs and commits, audit focus violations, and manage the leaderboard.
+          </div>
+
+          <form class="onboarding-form" onsubmit="submitLandingAdminLogin(event)">
+            <div class="onboarding-field">
+              <label for="landing-admin-email">Organizer Email ID *</label>
+              <input type="email" id="landing-admin-email" required value="vivek.yadav.25cse@bmu.edu.in" autocomplete="username" />
+            </div>
+
+            <div class="onboarding-field">
+              <label for="landing-admin-password">Admin Password *</label>
+              <input type="password" id="landing-admin-password" required placeholder="Enter password (qazplm)" autocomplete="current-password" />
+            </div>
+
+            <div id="landing-admin-error" style="display: none; color: var(--accent-red); font-size: 0.8rem; margin-bottom: 0.75rem; text-align: left; background: rgba(248, 81, 73, 0.1); border: 1px solid var(--accent-red); padding: 0.4rem 0.6rem; border-radius: var(--radius-sm);">
+              Invalid Admin ID or Password. Access denied.
+            </div>
+
+            <button type="submit" class="btn btn-primary onboarding-btn" style="background: var(--accent-cyan); color: #000; font-weight: 700;">
+              <span>🛡️ Sign In & Open Organizer Portal</span>
+            </button>
+          </form>
+        </div>
       </div>
     </div>
 
@@ -656,7 +697,7 @@
 
     <!-- Admin Workshop & Leaderboard Modal (Admin Only) -->
     <div id="admin-modal" class="modal-backdrop">
-      <div class="modal-window" style="max-width: 800px;">
+      <div class="modal-window" style="max-width: 960px;">
         <div class="modal-header">
           <div class="modal-title" style="display: flex; align-items: center; gap: 0.5rem;">
             <span>⚙️</span>
@@ -672,14 +713,14 @@
           <!-- Admin Status Bar -->
           <div style="background: var(--bg-tertiary); border: 1px solid var(--border-color); border-radius: var(--radius-sm); padding: 0.5rem 0.8rem; margin-bottom: 1rem; display: flex; justify-content: space-between; align-items: center; font-size: 0.8rem;">
             <span>Authenticated as: <strong style="color: var(--accent-cyan);">vivek.yadav.25cse@bmu.edu.in</strong></span>
-            <span style="color: var(--accent-green); font-size: 0.75rem;">● Active Session</span>
+            <span style="color: var(--accent-green); font-size: 0.75rem;">● Active Session & Realtime Proctor</span>
           </div>
 
           <!-- Leaderboard Section inside Admin Portal -->
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; flex-wrap: wrap; gap: 0.5rem;">
             <div style="font-weight: 600; font-size: 0.95rem; color: var(--accent-cyan); display: flex; align-items: center; gap: 0.4rem;">
               <span>🏆</span>
-              <span>Live Workshop Leaderboard</span>
+              <span>Live Workshop Participants & Leaderboard</span>
             </div>
             <div style="display: flex; gap: 0.5rem;">
               <button class="btn btn-sm" onclick="exportLeaderboardCSV()">📥 Download CSV</button>
@@ -687,15 +728,18 @@
             </div>
           </div>
 
-          <div style="max-height: 260px; overflow-y: auto; border: 1px solid var(--border-color); border-radius: var(--radius-md); margin-bottom: 1.25rem;">
+          <div style="max-height: 280px; overflow-y: auto; border: 1px solid var(--border-color); border-radius: var(--radius-md); margin-bottom: 1.25rem;">
             <table class="leaderboard-table">
               <thead>
                 <tr>
                   <th>Rank</th>
                   <th>Participant</th>
+                  <th>College Email</th>
                   <th>Verified XP</th>
                   <th>Missions</th>
+                  <th>Focus Alerts</th>
                   <th>Status</th>
+                  <th style="text-align: right;">Admin Actions</th>
                 </tr>
               </thead>
               <tbody id="leaderboard-table-body"></tbody>
@@ -707,8 +751,28 @@
           <div id="admin-audit-logs" style="background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: var(--radius-md); max-height: 180px; overflow-y: auto;"></div>
         </div>
         <div class="modal-footer" style="display: flex; justify-content: space-between; align-items: center;">
-          <span style="font-size: 0.75rem; color: var(--text-dim);">Open Sourcery Organizer Portal</span>
+          <span style="font-size: 0.75rem; color: var(--text-dim);">Open Sourcery Organizer Portal • Full Participant Moderation Rights</span>
           <button class="btn btn-primary modal-close-btn">Close</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Participant Work Dossier Modal (Trace Work, Commits, PRs, Issues, Integrity) -->
+    <div id="participant-dossier-modal" class="modal-backdrop">
+      <div class="modal-window" style="max-width: 860px;">
+        <div class="modal-header">
+          <div class="modal-title" style="display: flex; align-items: center; gap: 0.5rem;">
+            <span>🔍</span>
+            <span id="dossier-modal-title">Participant Work Dossier</span>
+          </div>
+          <button class="btn btn-sm modal-close-btn" onclick="closeModal('participant-dossier-modal')">✕</button>
+        </div>
+        <div class="modal-body" id="dossier-modal-body" style="max-height: 70vh; overflow-y: auto; padding: 1.25rem;">
+          <!-- Dynamically populated via openParticipantDossier() in js/app.js -->
+        </div>
+        <div class="modal-footer" style="display: flex; justify-content: space-between; align-items: center;">
+          <span style="font-size: 0.75rem; color: var(--text-dim);">Open Sourcery Participant Trace & Moderation</span>
+          <button class="btn btn-primary modal-close-btn" onclick="closeModal('participant-dossier-modal')">Close Dossier</button>
         </div>
       </div>
     </div>
