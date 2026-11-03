@@ -1,0 +1,796 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Open Sourcery Arena — Collaborative Git & GitHub Simulation</title>
+    <meta name="description" content="Realistic interactive collaborative Git & GitHub simulation platform." />
+    <link rel="icon" type="image/jpeg" href="assets/logo.jpg" />
+    <link rel="stylesheet" href="css/style.css" />
+  </head>
+  <body>
+    <!-- Full-screen Onboarding Welcome / Registration Overlay -->
+    <div id="onboarding-overlay" class="onboarding-overlay" style="display: none;">
+      <div class="onboarding-card">
+        <img src="assets/logo.jpg" alt="SCI-MAT Logo" class="onboarding-logo" />
+        <div class="onboarding-title">SCI-MAT <span>OPEN SOURCERY</span></div>
+        <div class="onboarding-sub">
+          Interactive Git & GitHub Arena. Register below to initialize your collaborative workspace and launch your 15-minute challenge.
+        </div>
+
+        <div class="onboarding-badge-bar">
+          <span class="onboarding-badge">⏱️ 15 Minutes Sprint</span>
+          <span class="onboarding-badge">🎯 8 Hands-on Missions</span>
+          <span class="onboarding-badge">🏆 900 Max XP</span>
+        </div>
+
+        <form class="onboarding-form" onsubmit="submitOnboardingRegistration(event)">
+          <div class="onboarding-field">
+            <label for="onboarding-name-input">Your Full Name *</label>
+            <input type="text" id="onboarding-name-input" required placeholder="e.g. Vivek Yadav" autocomplete="name" />
+          </div>
+
+          <div class="onboarding-field">
+            <label for="onboarding-email-input">College Email ID *</label>
+            <input type="email" id="onboarding-email-input" required placeholder="e.g. vivek.yadav.25cse@bmu.edu.in" autocomplete="email" />
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem;">
+            <div class="onboarding-field">
+              <label for="onboarding-roll-input">Roll No. (Optional)</label>
+              <input type="text" id="onboarding-roll-input" placeholder="e.g. 25CSE042" />
+            </div>
+            <div class="onboarding-field">
+              <label for="onboarding-github-input">GitHub Username (Opt.)</label>
+              <input type="text" id="onboarding-github-input" placeholder="e.g. vivek-bmu" />
+            </div>
+          </div>
+
+          <button type="submit" class="btn btn-primary onboarding-btn">
+            <span>🚀 Start 15-Min Challenge & Enter Arena</span>
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <!-- Canvas for celebratory confetti bursts -->
+    <canvas id="confetti-canvas"></canvas>
+
+    <!-- Top Application Navbar -->
+    <header class="app-navbar">
+      <div class="nav-left">
+        <a href="#" class="brand-logo" onclick="switchTab('code'); return false;">
+          <img src="assets/logo.jpg" alt="SCI-MAT Logo" class="brand-logo-img" />
+          <div>
+            <div class="brand-title">SCI-MAT <span>OPEN SOURCERY</span></div>
+            <span class="brand-subtitle">Collaborative Git & GitHub Simulation</span>
+          </div>
+        </a>
+
+        <!-- Workshop Session Status Pill -->
+        <div class="session-badge">
+          <span class="status-dot"></span>
+          <span>Live Arena</span>
+        </div>
+      </div>
+
+      <!-- Live Workshop Countdown Timer (15 Minutes) -->
+      <div class="nav-center">
+        <div class="timer-pill" title="15-minute challenge timer">
+          <span>⏱️</span>
+          <span id="session-countdown">15:00</span>
+        </div>
+      </div>
+
+      <!-- Right Action Items: Terminal, Missions Drawer, Admin Portal, Contributor Switcher -->
+      <div class="nav-right">
+        <button id="btn-terminal-toggle" class="btn" title="Toggle Git CLI Terminal (Press ` key)">
+          <span>💻 Terminal</span>
+        </button>
+
+        <button id="btn-missions-toggle" class="btn btn-cyan" title="Open Workshop Missions">
+          <span>🎯 Missions</span>
+          <span id="missions-count-badge" class="badge">0/8 Completed</span>
+        </button>
+
+        <button id="btn-admin-modal" class="btn" title="Admin Portal & Live Workshop Leaderboard">
+          <span>⚙️ Admin Portal</span>
+        </button>
+
+        <!-- Contributor Switcher ("Working as...") -->
+        <div class="contributor-switcher-wrap">
+          <div class="user-profile-pill" onclick="toggleContributorDropdown()">
+            <div id="nav-user-avatar" class="user-avatar">V</div>
+            <div>
+              <div style="display: flex; align-items: center; gap: 0.3rem;">
+                <span style="color: var(--text-dim); font-size: 0.7rem;">Working as:</span>
+                <strong id="nav-user-name">Vivek</strong>
+                <span style="font-size: 0.65rem;">▼</span>
+              </div>
+              <div style="display: flex; gap: 0.35rem; align-items: center;">
+                <span id="nav-user-xp" class="user-xp">0 XP</span>
+                <span style="color: var(--text-dim); font-size: 0.65rem;">(Click to switch)</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Contributor Dropdown Menu -->
+          <div id="contributor-dropdown-menu" class="contributor-dropdown-menu"></div>
+        </div>
+
+        <!-- Participant Logout Button -->
+        <button id="btn-participant-logout" class="btn btn-sm btn-danger" onclick="logoutParticipant()" title="Log out current participant and return to registration" style="margin-left: 0.25rem;">
+          <span>🚪 Logout</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- Repository Header (Simulated GitHub UI) -->
+    <section class="repo-header">
+      <div class="repo-meta-row">
+        <div class="repo-breadcrumbs">
+          <span>📁</span>
+          <span class="repo-owner" id="active-repo-owner">open-sourcery</span>
+          <span style="color: var(--text-dim);">/</span>
+
+          <!-- Multi-Repository Switcher -->
+          <div class="repo-switcher-wrap">
+            <button class="repo-select-btn" onclick="toggleRepoDropdown()">
+              <span id="active-repo-name-btn">college-website</span>
+              <span style="font-size: 0.7rem; color: var(--text-dim);">▼</span>
+            </button>
+            <div id="repo-dropdown-menu" class="repo-dropdown-menu"></div>
+          </div>
+
+          <span id="repo-visibility-badge" class="repo-visibility">Public</span>
+          <button class="btn btn-sm btn-cyan" onclick="openNewRepoModal()" style="margin-left: 0.5rem;">+ New Repo</button>
+        </div>
+
+        <div class="repo-actions-pills">
+          <button id="btn-repo-watch" class="btn btn-sm" onclick="toggleWatchRepo()"><span>👁️ <span id="watch-btn-label">Watch</span></span> <span id="repo-watchers-count" class="badge">0</span></button>
+          <button id="btn-repo-fork" class="btn btn-sm" onclick="forkCurrentRepository()"><span>🍴 Fork</span> <span id="repo-forks-count" class="badge">0</span></button>
+          <button id="btn-repo-star" class="btn btn-sm" onclick="toggleStarRepo()"><span id="star-btn-label">⭐ Star</span> <span id="repo-stars-count" class="badge">0</span></button>
+        </div>
+      </div>
+
+      <!-- Repository Description Subtext -->
+      <div style="max-width: 1280px; margin: 0.4rem auto 0; font-size: 0.85rem; color: var(--text-muted);" id="active-repo-description">
+        Collaborative open source project repository.
+      </div>
+
+      <div id="active-repo-forked-from" style="display: none; max-width: 1280px; margin: 0.2rem auto 0; font-size: 0.75rem; color: var(--text-dim);"></div>
+
+      <!-- Active Merge Conflict Alert Banner -->
+      <div id="active-conflict-banner" class="conflict-alert-banner" style="display: none;"></div>
+
+      <!-- Repository Tabs Navigation -->
+      <nav class="repo-nav-tabs">
+        <button class="nav-tab-btn active" data-tab="code">
+          <span>💻 Code</span>
+        </button>
+        <button class="nav-tab-btn" data-tab="issues">
+          <span>⊙ Issues</span>
+          <span id="badge-issues-count" class="badge">0</span>
+        </button>
+        <button class="nav-tab-btn" data-tab="pullRequests">
+          <span>🔀 Pull requests</span>
+          <span id="badge-prs-count" class="badge">0</span>
+        </button>
+        <button class="nav-tab-btn" data-tab="branches">
+          <span>🌿 Branches</span>
+          <span id="badge-branches-count" class="badge">1</span>
+        </button>
+        <button class="nav-tab-btn" data-tab="commits">
+          <span>🕒 Commits</span>
+          <span id="badge-commits-count" class="badge">1</span>
+        </button>
+        <button class="nav-tab-btn" data-tab="activity">
+          <span>⚡ Activity</span>
+          <span id="badge-activity-count" class="badge">1</span>
+        </button>
+      </nav>
+    </section>
+
+    <!-- Main Content Panes -->
+    <main class="app-main">
+
+      <!-- ========================================== -->
+      <!-- TAB 1: CODE TAB                           -->
+      <!-- ========================================== -->
+      <section id="tab-code" class="tab-pane active">
+        <!-- Toolbar: Branch selector, Add File, Push/Pull buttons -->
+        <div class="code-toolbar">
+          <div class="branch-select-group" style="position: relative;">
+            <button class="branch-dropdown-btn" onclick="toggleBranchDropdown()">
+              <span>🌿</span>
+              <span id="current-branch-btn-text">main</span>
+              <span style="font-size: 0.65rem;">▼</span>
+            </button>
+
+            <!-- Branch Dropdown Menu -->
+            <div id="branch-dropdown-menu" style="display: none; position: absolute; top: 105%; left: 0; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: var(--radius-md); box-shadow: var(--shadow-md); z-index: 30; width: 220px;"></div>
+
+            <button class="btn btn-sm" onclick="promptNewBranch()">+ New Branch</button>
+            <button class="btn btn-sm" onclick="openAddFileModal()">+ Add File</button>
+          </div>
+
+          <div style="display: flex; gap: 0.5rem; align-items: center;">
+            <button id="btn-push-origin" class="btn" onclick="pushToOrigin()">
+              <span>⬆ Push</span>
+            </button>
+            <button class="btn" onclick="pullFromOrigin()">
+              <span>⬇ Pull</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Git Working Directory & Staging Area Card (Shown when files are modified/staged) -->
+        <div id="git-staging-card" class="git-staging-card" style="display: none;">
+          <div class="git-staging-header">
+            <span class="git-staging-title">
+              <span>📦</span>
+              <span>Working Tree & Staging Area</span>
+            </span>
+            <button class="btn btn-sm btn-cyan" onclick="stageAllFiles()">Stage All (+)</button>
+          </div>
+
+          <div class="staging-lists-grid">
+            <div class="staging-box">
+              <div class="staging-box-title">
+                <span>Changes not staged</span>
+                <span style="color: var(--accent-red);">Unstaged</span>
+              </div>
+              <div id="unstaged-files-list"></div>
+            </div>
+
+            <div class="staging-box">
+              <div class="staging-box-title">
+                <span>Changes to be committed</span>
+                <span style="color: var(--accent-green);">Staged Index</span>
+              </div>
+              <div id="staged-files-list"></div>
+            </div>
+          </div>
+
+          <div class="commit-bar-form">
+            <input type="text" id="commit-msg-input" placeholder="Commit message (e.g. feat: add new feature)" />
+            <button class="btn btn-primary" onclick="commitChanges()">Commit changes</button>
+          </div>
+        </div>
+
+        <!-- File Browser Table Card -->
+        <div class="file-browser-card">
+          <div class="file-browser-header">
+            <div class="latest-commit-info">
+              <strong id="latest-commit-author" style="color: var(--accent-blue);">Vivek</strong>
+              <span id="latest-commit-message" style="margin-left: 0.5rem; color: var(--text-main);">Initial commit</span>
+            </div>
+            <div>
+              Latest commit <span id="latest-commit-hash" class="commit-hash-link">-</span>
+            </div>
+          </div>
+
+          <table class="file-table">
+            <tbody id="file-table-body"></tbody>
+          </table>
+        </div>
+
+        <!-- File Viewer / In-Browser Editor -->
+        <div id="file-viewer-section"></div>
+      </section>
+
+      <!-- ========================================== -->
+      <!-- TAB 2: ISSUES TAB                         -->
+      <!-- ========================================== -->
+      <section id="tab-issues" class="tab-pane">
+        <div class="issues-toolbar">
+          <div class="filter-pills" id="issues-filter-pills">
+            <button class="filter-pill active" id="filter-issue-open-btn" onclick="setIssuesFilter('open')">⊙ Open (<span id="filter-open-issues-count">0</span>)</button>
+            <button class="filter-pill" id="filter-issue-closed-btn" onclick="setIssuesFilter('closed')">✓ Closed (<span id="filter-closed-issues-count">0</span>)</button>
+            <button class="filter-pill" id="filter-issue-all-btn" onclick="setIssuesFilter('all')">All (<span id="filter-all-issues-count">0</span>)</button>
+          </div>
+          <button class="btn btn-primary" onclick="openNewIssueModal()">+ New Issue</button>
+        </div>
+
+        <div class="issues-list-card">
+          <div class="list-card-header">
+            <span>Repository Bug & Feature Reports</span>
+          </div>
+          <div id="issues-list-container"></div>
+        </div>
+      </section>
+
+      <!-- ========================================== -->
+      <!-- TAB 3: PULL REQUESTS TAB                  -->
+      <!-- ========================================== -->
+      <section id="tab-pullRequests" class="tab-pane">
+        <div class="prs-toolbar">
+          <div class="filter-pills" id="prs-filter-pills">
+            <button class="filter-pill active" id="filter-pr-open-btn" onclick="setPRsFilter('open')">Open (<span id="filter-open-prs-count">0</span>)</button>
+            <button class="filter-pill" id="filter-pr-merged-btn" onclick="setPRsFilter('merged')">🟣 Merged (<span id="filter-merged-prs-count">0</span>)</button>
+            <button class="filter-pill" id="filter-pr-closed-btn" onclick="setPRsFilter('closed')">Closed (<span id="filter-closed-prs-count">0</span>)</button>
+            <button class="filter-pill" id="filter-pr-all-btn" onclick="setPRsFilter('all')">All (<span id="filter-all-prs-count">0</span>)</button>
+          </div>
+          <button class="btn btn-primary" onclick="openNewPRModal()">+ New pull request</button>
+        </div>
+
+        <div class="prs-list-card">
+          <div class="list-card-header">
+            <span>Proposed Code Integrations</span>
+          </div>
+          <div id="prs-list-container"></div>
+        </div>
+      </section>
+
+      <!-- ========================================== -->
+      <!-- TAB 4: BRANCHES TAB                       -->
+      <!-- ========================================== -->
+      <section id="tab-branches" class="tab-pane">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+          <h3 style="font-size: 1rem; font-weight: 600;">Repository Branches</h3>
+          <button class="btn btn-primary" onclick="promptNewBranch()">+ New Branch</button>
+        </div>
+
+        <div class="file-browser-card">
+          <table class="branch-table">
+            <thead>
+              <tr style="background: var(--bg-tertiary); color: var(--text-dim); font-size: 0.75rem; text-transform: uppercase;">
+                <td style="padding: 0.6rem 1rem;">Branch Name</td>
+                <td style="padding: 0.6rem 1rem;">Latest Commit</td>
+                <td style="padding: 0.6rem 1rem; text-align: right;">Actions</td>
+              </tr>
+            </thead>
+            <tbody id="branches-table-body"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ========================================== -->
+      <!-- TAB 5: COMMITS TAB                        -->
+      <!-- ========================================== -->
+      <section id="tab-commits" class="tab-pane">
+        <div style="margin-bottom: 1rem;">
+          <h3 style="font-size: 1rem; font-weight: 600;">Git Commit History</h3>
+        </div>
+        <div id="commits-timeline-container" class="commits-timeline"></div>
+      </section>
+
+      <!-- ========================================== -->
+      <!-- TAB 6: ACTIVITY / PULSE TAB               -->
+      <!-- ========================================== -->
+      <section id="tab-activity" class="tab-pane">
+        <div style="margin-bottom: 1rem; display: flex; justify-content: space-between; align-items: center;">
+          <h3 style="font-size: 1rem; font-weight: 600;">Collaborator Pulse & Live Activity Feed</h3>
+          <span style="font-size: 0.75rem; color: var(--text-dim);">Live across all open tabs</span>
+        </div>
+        <div id="activity-feed-container" class="activity-feed-list"></div>
+      </section>
+
+    </main>
+
+    <!-- ====================================================================== -->
+    <!-- INTERACTIVE GIT CLI TERMINAL (Bottom Drawer)                          -->
+    <!-- ====================================================================== -->
+    <div id="terminal-container" class="terminal-container minimized">
+      <div class="terminal-header">
+        <div class="terminal-header-title">
+          <span>💻</span>
+          <span>Simulated Git Terminal</span>
+          <span class="badge" style="font-size: 0.65rem;">bash / zsh</span>
+        </div>
+        <div style="display: flex; gap: 0.5rem; align-items: center;">
+          <span style="font-size: 0.7rem; color: var(--text-dim);">Shortcut: ` (backtick)</span>
+          <button id="btn-terminal-close" class="btn btn-sm" style="padding: 0.15rem 0.4rem;">Minimize ▼</button>
+        </div>
+      </div>
+
+      <div id="terminal-body" class="terminal-body">
+        <div style="color: #64748b; margin-bottom: 0.5rem;">
+          Welcome to the Open Sourcery simulated Git Terminal!<br />
+          Type <span style="color: #38bdf8;">git status</span>, <span style="color: #38bdf8;">git branch</span>, <span style="color: #38bdf8;">git add .</span>, <span style="color: #38bdf8;">git commit -m "..."</span>, or <span style="color: #38bdf8;">help</span>.
+        </div>
+      </div>
+
+      <div style="padding: 0.4rem 1rem; background: #080c14; border-top: 1px solid var(--border-color);" class="terminal-prompt-line">
+        <span class="terminal-prompt-str">student@open-sourcery:~/college-website $ </span>
+        <input type="text" id="terminal-cli-input" class="terminal-input" placeholder="Type a git command..." autocomplete="off" />
+      </div>
+    </div>
+
+    <!-- ====================================================================== -->
+    <!-- MISSIONS DRAWER (Side Drawer)                                          -->
+    <!-- ====================================================================== -->
+    <aside id="missions-drawer" class="missions-drawer">
+      <div class="missions-header">
+        <div class="missions-title">
+          <span>🎯</span>
+          <span>Workshop Missions</span>
+        </div>
+        <button id="btn-missions-close" class="btn btn-sm">✕</button>
+      </div>
+
+      <div class="xp-progress-bar-wrap">
+        <div class="xp-progress-labels">
+          <span style="font-weight: 600;">Overall Progress</span>
+          <span id="xp-progress-numbers" style="font-family: var(--font-mono); color: var(--accent-cyan);">0 / 900 XP</span>
+        </div>
+        <div class="xp-bar-track">
+          <div id="xp-bar-fill" class="xp-bar-fill"></div>
+        </div>
+      </div>
+
+      <div id="missions-list-container" class="missions-list"></div>
+    </aside>
+
+    <!-- ====================================================================== -->
+    <!-- MODALS                                                                -->
+    <!-- ====================================================================== -->
+
+    <!-- Create New Repository Modal -->
+    <div id="new-repo-modal" class="modal-backdrop">
+      <div class="modal-window">
+        <div class="modal-header">
+          <div class="modal-title">Create a new repository</div>
+          <button class="btn btn-sm modal-close-btn">✕</button>
+        </div>
+        <form onsubmit="submitNewRepo(event)">
+          <div class="modal-body">
+            <p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 1rem;">
+              A repository contains all project files, revision history, branches, and collaboration threads.
+            </p>
+
+            <div style="margin-bottom: 0.85rem;">
+              <label style="display: block; font-size: 0.75rem; font-weight: 600; color: var(--text-dim); margin-bottom: 0.35rem;">Owner / Repository name *</label>
+              <div style="display: flex; align-items: center; gap: 0.5rem;">
+                <span style="color: var(--text-muted); font-family: var(--font-mono);">open-sourcery /</span>
+                <input type="text" id="new-repo-name-input" required placeholder="e.g. campus-connect" style="flex: 1;" />
+              </div>
+            </div>
+
+            <div style="margin-bottom: 0.85rem;">
+              <label style="display: block; font-size: 0.75rem; font-weight: 600; color: var(--text-dim); margin-bottom: 0.35rem;">Description (optional)</label>
+              <input type="text" id="new-repo-desc-input" placeholder="Short description of your project" style="width: 100%;" />
+            </div>
+
+            <div style="margin-bottom: 1rem;">
+              <label style="display: block; font-size: 0.75rem; font-weight: 600; color: var(--text-dim); margin-bottom: 0.35rem;">Visibility</label>
+              <div style="display: flex; gap: 1.5rem;">
+                <label style="display: flex; align-items: center; gap: 0.4rem; font-size: 0.85rem;">
+                  <input type="radio" name="repo-visibility" value="public" checked /> 🌐 Public (Anyone can collaborate)
+                </label>
+                <label style="display: flex; align-items: center; gap: 0.4rem; font-size: 0.85rem;">
+                  <input type="radio" name="repo-visibility" value="private" /> 🔒 Private
+                </label>
+              </div>
+            </div>
+
+            <div style="border-top: 1px solid var(--border-color); padding-top: 0.85rem;">
+              <label style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem;">
+                <input type="checkbox" id="init-readme-check" checked />
+                <span>Initialize this repository with a README</span>
+              </label>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn modal-close-btn">Cancel</button>
+            <button type="submit" class="btn btn-primary">Create repository</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Add New File Modal -->
+    <div id="add-file-modal" class="modal-backdrop">
+      <div class="modal-window">
+        <div class="modal-header">
+          <div class="modal-title">+ Add New File to Repository</div>
+          <button class="btn btn-sm modal-close-btn">✕</button>
+        </div>
+        <form onsubmit="submitNewFile(event)">
+          <div class="modal-body">
+            <div style="margin-bottom: 0.85rem;">
+              <label style="display: block; font-size: 0.75rem; font-weight: 600; color: var(--text-dim); margin-bottom: 0.35rem;">File Path / Name *</label>
+              <input type="text" id="new-filename-input" required placeholder="e.g. docs/architecture.md or about.html" style="width: 100%; font-family: var(--font-mono);" />
+            </div>
+
+            <div>
+              <label style="display: block; font-size: 0.75rem; font-weight: 600; color: var(--text-dim); margin-bottom: 0.35rem;">File Contents</label>
+              <textarea id="new-file-content-input" rows="8" placeholder="Type initial content for this file..." style="width: 100%; font-family: var(--font-mono); font-size: 0.8rem;"></textarea>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn modal-close-btn">Cancel</button>
+            <button type="submit" class="btn btn-primary">Create and Stage File</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- New Issue Modal -->
+    <div id="new-issue-modal" class="modal-backdrop">
+      <div class="modal-window">
+        <div class="modal-header">
+          <div class="modal-title">New Issue</div>
+          <button class="btn btn-sm modal-close-btn">✕</button>
+        </div>
+        <form onsubmit="submitNewIssue(event)">
+          <div class="modal-body">
+            <div style="margin-bottom: 0.85rem;">
+              <label style="display: block; font-size: 0.75rem; font-weight: 600; color: var(--text-muted); margin-bottom: 0.3rem;">Title *</label>
+              <input type="text" id="issue-title-input" required placeholder="Describe the issue or feature request..." style="width: 100%;" />
+            </div>
+            <div style="margin-bottom: 0.85rem;">
+              <label style="display: block; font-size: 0.75rem; font-weight: 600; color: var(--text-muted); margin-bottom: 0.3rem;">Description *</label>
+              <textarea id="issue-desc-input" required rows="5" placeholder="Explain the problem and proposed resolution..." style="width: 100%;"></textarea>
+            </div>
+            <div>
+              <label style="display: block; font-size: 0.75rem; font-weight: 600; color: var(--text-muted); margin-bottom: 0.4rem;">Labels</label>
+              <div style="display: flex; gap: 1rem;">
+                <label style="font-size: 0.8rem; display: flex; align-items: center; gap: 0.3rem;">
+                  <input type="checkbox" id="label-bug-check" checked /> <span class="label-pill label-bug">bug</span>
+                </label>
+                <label style="font-size: 0.8rem; display: flex; align-items: center; gap: 0.3rem;">
+                  <input type="checkbox" id="label-doc-check" checked /> <span class="label-pill label-doc">documentation</span>
+                </label>
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn modal-close-btn">Cancel</button>
+            <button type="submit" class="btn btn-primary">Submit new issue</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Issue Detail Modal -->
+    <div id="issue-detail-modal" class="modal-backdrop">
+      <div class="modal-window">
+        <div class="modal-header">
+          <div id="issue-detail-modal-title" class="modal-title">Issue Details</div>
+          <button class="btn btn-sm modal-close-btn">✕</button>
+        </div>
+        <div id="issue-detail-modal-body" class="modal-body"></div>
+      </div>
+    </div>
+
+    <!-- New Pull Request Modal -->
+    <div id="new-pr-modal" class="modal-backdrop">
+      <div class="modal-window" style="max-width: 750px;">
+        <div class="modal-header">
+          <div class="modal-title">Comparing changes & New Pull Request</div>
+          <button class="btn btn-sm modal-close-btn">✕</button>
+        </div>
+        <form onsubmit="submitNewPR(event)">
+          <div class="modal-body">
+            <div class="pr-branch-compare-box">
+              <span style="font-size: 0.85rem; color: var(--text-muted);">base: <strong>main</strong></span>
+              <span class="compare-arrow">←</span>
+              <span style="font-size: 0.85rem; color: var(--text-muted);">compare:</span>
+              <select id="pr-compare-branch-select" onchange="updateNewPRDiffPreview()"></select>
+            </div>
+
+            <div style="margin-bottom: 0.85rem;">
+              <label style="display: block; font-size: 0.75rem; font-weight: 600; color: var(--text-muted); margin-bottom: 0.3rem;">Title *</label>
+              <input type="text" id="new-pr-title-input" required placeholder="Describe your pull request..." style="width: 100%;" />
+            </div>
+
+            <div style="margin-bottom: 0.85rem;">
+              <label style="display: block; font-size: 0.75rem; font-weight: 600; color: var(--text-muted); margin-bottom: 0.3rem;">Description</label>
+              <textarea id="new-pr-desc-input" rows="3" placeholder="Summary of changes..." style="width: 100%;"></textarea>
+            </div>
+
+            <div id="new-pr-diff-preview"></div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn modal-close-btn">Cancel</button>
+            <button type="submit" class="btn btn-primary">Create pull request</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- PR Detail Modal -->
+    <div id="pr-detail-modal" class="modal-backdrop">
+      <div class="modal-window" style="max-width: 750px;">
+        <div class="modal-header">
+          <div id="pr-detail-modal-title" class="modal-title">Pull Request Details</div>
+          <button class="btn btn-sm modal-close-btn">✕</button>
+        </div>
+        <div id="pr-detail-modal-body" class="modal-body"></div>
+      </div>
+    </div>
+
+    <!-- Conflict Resolver Modal -->
+    <div id="conflict-resolver-modal" class="modal-backdrop">
+      <div class="modal-window" style="max-width: 750px;">
+        <div class="modal-header">
+          <div class="modal-title">⚔️ Merge Conflict Resolver</div>
+          <button class="btn btn-sm modal-close-btn">✕</button>
+        </div>
+        <div id="conflict-resolver-modal-body" class="modal-body"></div>
+      </div>
+    </div>
+
+    <!-- Admin Login Modal -->
+    <div id="admin-login-modal" class="modal-backdrop">
+      <div class="modal-window" style="max-width: 440px;">
+        <div class="modal-header">
+          <div class="modal-title" style="display: flex; align-items: center; gap: 0.5rem;">
+            <span>🔐</span>
+            <span>Admin Authentication</span>
+          </div>
+          <button class="btn btn-sm modal-close-btn">✕</button>
+        </div>
+        <form onsubmit="submitAdminLogin(event)">
+          <div class="modal-body">
+            <p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 1.25rem; line-height: 1.4;">
+              Access to the Workshop Organizer Console and Live Leaderboard requires authenticated organizer credentials.
+            </p>
+
+            <div id="admin-login-error" style="display: none; background: rgba(248, 81, 73, 0.15); border: 1px solid var(--accent-red); color: var(--accent-red); padding: 0.6rem 0.8rem; border-radius: var(--radius-sm); font-size: 0.8rem; margin-bottom: 1rem;">
+              Invalid credentials.
+            </div>
+
+            <div style="margin-bottom: 1rem;">
+              <label style="display: block; font-size: 0.75rem; font-weight: 600; color: var(--text-dim); margin-bottom: 0.35rem;">
+                Admin Email ID *
+              </label>
+              <input type="email" id="admin-email-input" required placeholder="vivek.yadav.25cse@bmu.edu.in" style="width: 100%;" />
+            </div>
+
+            <div style="margin-bottom: 1.25rem;">
+              <label style="display: block; font-size: 0.75rem; font-weight: 600; color: var(--text-dim); margin-bottom: 0.35rem;">
+                Admin Password *
+              </label>
+              <input type="password" id="admin-password-input" required placeholder="Enter admin password" style="width: 100%;" />
+            </div>
+          </div>
+          <div class="modal-footer" style="display: flex; justify-content: flex-end; gap: 0.5rem;">
+            <button type="button" class="btn modal-close-btn">Cancel</button>
+            <button type="submit" class="btn btn-primary">Sign in to Admin Portal</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Admin Workshop & Leaderboard Modal (Admin Only) -->
+    <div id="admin-modal" class="modal-backdrop">
+      <div class="modal-window" style="max-width: 800px;">
+        <div class="modal-header">
+          <div class="modal-title" style="display: flex; align-items: center; gap: 0.5rem;">
+            <span>⚙️</span>
+            <span>Admin Portal & Workshop Console</span>
+            <span class="badge" style="background: rgba(54, 228, 212, 0.2); color: var(--accent-cyan); font-size: 0.65rem;">Verified Admin</span>
+          </div>
+          <div style="display: flex; gap: 0.5rem; align-items: center;">
+            <button class="btn btn-sm btn-danger" onclick="logoutAdmin()" title="Sign out of Admin Portal">🚪 Sign out</button>
+            <button class="btn btn-sm modal-close-btn">✕</button>
+          </div>
+        </div>
+        <div class="modal-body">
+          <!-- Admin Status Bar -->
+          <div style="background: var(--bg-tertiary); border: 1px solid var(--border-color); border-radius: var(--radius-sm); padding: 0.5rem 0.8rem; margin-bottom: 1rem; display: flex; justify-content: space-between; align-items: center; font-size: 0.8rem;">
+            <span>Authenticated as: <strong style="color: var(--accent-cyan);">vivek.yadav.25cse@bmu.edu.in</strong></span>
+            <span style="color: var(--accent-green); font-size: 0.75rem;">● Active Session</span>
+          </div>
+
+          <!-- Leaderboard Section inside Admin Portal -->
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; flex-wrap: wrap; gap: 0.5rem;">
+            <div style="font-weight: 600; font-size: 0.95rem; color: var(--accent-cyan); display: flex; align-items: center; gap: 0.4rem;">
+              <span>🏆</span>
+              <span>Live Workshop Leaderboard</span>
+            </div>
+            <div style="display: flex; gap: 0.5rem;">
+              <button class="btn btn-sm" onclick="exportLeaderboardCSV()">📥 Download CSV</button>
+              <button class="btn btn-danger btn-sm" onclick="resetAllWorkshopData()">⚠️ Reset Workshop Data</button>
+            </div>
+          </div>
+
+          <div style="max-height: 260px; overflow-y: auto; border: 1px solid var(--border-color); border-radius: var(--radius-md); margin-bottom: 1.25rem;">
+            <table class="leaderboard-table">
+              <thead>
+                <tr>
+                  <th>Rank</th>
+                  <th>Participant</th>
+                  <th>Verified XP</th>
+                  <th>Missions</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody id="leaderboard-table-body"></tbody>
+            </table>
+          </div>
+
+          <!-- Organizer Audit Logs Section -->
+          <h4 style="font-size: 0.85rem; margin-bottom: 0.5rem; color: var(--text-dim);">Live Audit & Activity Logs</h4>
+          <div id="admin-audit-logs" style="background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: var(--radius-md); max-height: 180px; overflow-y: auto;"></div>
+        </div>
+        <div class="modal-footer" style="display: flex; justify-content: space-between; align-items: center;">
+          <span style="font-size: 0.75rem; color: var(--text-dim);">Open Sourcery Organizer Portal</span>
+          <button class="btn btn-primary modal-close-btn">Close</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Time-Up Modal -->
+    <div id="time-up-modal" class="modal-backdrop">
+      <div class="modal-window" style="max-width: 480px; text-align: center;">
+        <div class="modal-header">
+          <div class="modal-title" style="display: flex; align-items: center; gap: 0.5rem; justify-content: center; width: 100%;">
+            <span>⏱️</span>
+            <span>15-Minute Sprint Completed!</span>
+          </div>
+          <button class="btn btn-sm modal-close-btn">✕</button>
+        </div>
+        <div class="modal-body" style="padding: 1.5rem 1.25rem;">
+          <div style="font-size: 2.5rem; margin-bottom: 0.5rem;">🎉</div>
+          <h3 style="font-size: 1.2rem; margin-bottom: 0.5rem; color: var(--accent-cyan);">Time's Up! Great Effort!</h3>
+          <p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 1.25rem;">
+            Your 15-minute Git & GitHub sprint has concluded. Here is your final workshop score:
+          </p>
+
+          <div style="background: var(--bg-tertiary); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 1rem; margin-bottom: 1.25rem; display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem;">
+            <div>
+              <div style="font-size: 0.75rem; color: var(--text-dim);">Verified Score</div>
+              <div id="time-up-xp" style="font-size: 1.4rem; font-weight: 800; color: var(--accent-cyan); font-family: var(--font-mono);">0 XP</div>
+            </div>
+            <div>
+              <div style="font-size: 0.75rem; color: var(--text-dim);">Missions Completed</div>
+              <div id="time-up-missions" style="font-size: 1.4rem; font-weight: 800; color: var(--accent-green);">0 / 8</div>
+            </div>
+          </div>
+
+          <p style="font-size: 0.8rem; color: var(--text-dim); margin-bottom: 0;">
+            You can continue exploring your files and commits, or restart the 15-minute sprint.
+          </p>
+        </div>
+        <div class="modal-footer" style="display: flex; justify-content: center; gap: 0.5rem;">
+          <button class="btn btn-primary modal-close-btn">Review My Code</button>
+          <button class="btn btn-cyan" onclick="restartSprintTimer()">🔄 Restart 15-Min Timer</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Fullscreen & Focus Lock Alert Modal -->
+    <div id="fullscreen-lock-modal" class="modal-backdrop" style="backdrop-filter: blur(20px); background: rgba(8, 12, 20, 0.95); z-index: 99999;">
+      <div class="modal-window" style="max-width: 500px; text-align: center; border: 2px solid var(--accent-red); box-shadow: 0 0 35px rgba(248, 81, 73, 0.4);">
+        <div class="modal-header" style="background: rgba(248, 81, 73, 0.15); border-bottom: 1px solid var(--accent-red);">
+          <div class="modal-title" style="color: var(--accent-red); display: flex; align-items: center; justify-content: center; width: 100%; gap: 0.5rem; font-weight: 800;">
+            <span>⚠️</span>
+            <span>FULL-SCREEN LOCK REQUIRED</span>
+          </div>
+        </div>
+        <div class="modal-body" style="padding: 1.75rem 1.5rem;">
+          <div style="font-size: 3rem; margin-bottom: 0.75rem;">🔒</div>
+          <h3 style="font-size: 1.25rem; font-weight: 700; color: var(--text-main); margin-bottom: 0.5rem;">
+            Workshop Focus Lock Activated
+          </h3>
+          <p style="color: var(--text-muted); font-size: 0.85rem; line-height: 1.5; margin-bottom: 1.25rem;">
+            Minimizing the window or switching tabs is monitored during the 15-minute challenge. You must remain in full-screen mode to continue working.
+          </p>
+          <div style="display: inline-block; background: rgba(248, 81, 73, 0.15); border: 1px solid var(--accent-red); color: var(--accent-red); padding: 0.4rem 1rem; border-radius: 9999px; font-weight: 600; font-size: 0.8rem; margin-bottom: 1.25rem;">
+            Focus / Tab switch detected: <span id="tab-switch-count-display">1</span>
+          </div>
+          <div>
+            <button class="btn btn-primary" style="width: 100%; padding: 0.85rem; font-size: 1rem; font-weight: 700; cursor: pointer;" onclick="resumeFullscreenAndDismissLock()">
+              🖥️ Return to Full Screen & Resume
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Toast Container -->
+    <div id="toast-container" class="toast-container"></div>
+
+    <!-- Scripts (Pure Vanilla JavaScript) -->
+    <script type="module" src="js/firebaseConfig.js"></script>
+    <script src="js/seedData.js"></script>
+    <script src="js/gitSimulator.js"></script>
+    <script src="js/missionValidator.js"></script>
+    <script src="js/sessionStore.js"></script>
+    <script src="js/confetti.js"></script>
+    <script src="js/app.js"></script>
+  </body>
+</html>

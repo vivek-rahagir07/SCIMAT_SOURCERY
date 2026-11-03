@@ -1,0 +1,13 @@
+{
+  "rules": {
+    "repositories": {
+      ".read": "now < 1798741800000",
+      ".write": "now < 1798741800000"
+    },
+    "sessions": {
+      ".read": "now < 1798741800000",
+      ".write": "now < 1798741800000"
+    }
+  }
+}
+
