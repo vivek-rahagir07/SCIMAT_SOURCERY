@@ -1952,6 +1952,129 @@ function openOnboardingModal() {
   if (overlay) overlay.style.display = 'flex';
 }
 
+// --- Participant Logout ---
+
+function logoutParticipant() {
+  if (confirm('Are you sure you want to log out? Your sprint session will be cleared for the next participant.')) {
+    // Exit full-screen if active
+    if (document.fullscreenElement || document.webkitFullscreenElement) {
+      try {
+        if (document.exitFullscreen) document.exitFullscreen().catch(() => {});
+        else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+      } catch {}
+    }
+
+    localStorage.removeItem('open_sourcery_user_registered');
+    localStorage.removeItem('open_sourcery_timer_start');
+    localStorage.removeItem('open_sourcery_tab_switch_count');
+    localStorage.removeItem('open_sourcery_user_email');
+
+    // Close any open modals
+    document.querySelectorAll('.modal-backdrop').forEach(m => m.classList.remove('open'));
+
+    // Reset countdown timer
+    const timerEl = document.getElementById('session-countdown');
+    if (timerEl) {
+      timerEl.textContent = '15:00';
+      timerEl.style.color = '';
+    }
+
+    // Display onboarding overlay
+    const overlay = document.getElementById('onboarding-overlay');
+    if (overlay) {
+      overlay.style.display = 'flex';
+      const nameInput = document.getElementById('onboarding-name-input');
+      const emailInput = document.getElementById('onboarding-email-input');
+      if (nameInput) nameInput.value = '';
+      if (emailInput) emailInput.value = '';
+    }
+
+    showToast('Logged out successfully. Welcome next participant!', 'info');
+  }
+}
+
+// --- Fullscreen & Tab-Switch Protection Guards ---
+
+function isUserSprintActive() {
+  const isRegistered = localStorage.getItem('open_sourcery_user_registered') === 'true';
+  if (!isRegistered) return false;
+  const startTime = parseInt(localStorage.getItem('open_sourcery_timer_start'), 10);
+  if (!startTime) return false;
+  const totalMs = 15 * 60 * 1000;
+  return (Date.now() - startTime) < totalMs;
+}
+
+function requestAppFullscreen() {
+  const docEl = document.documentElement;
+  try {
+    if (docEl.requestFullscreen) {
+      docEl.requestFullscreen().catch(() => {});
+    } else if (docEl.webkitRequestFullscreen) {
+      docEl.webkitRequestFullscreen();
+    } else if (docEl.mozRequestFullScreen) {
+      docEl.mozRequestFullScreen();
+    } else if (docEl.msRequestFullscreen) {
+      docEl.msRequestFullscreen();
+    }
+  } catch (err) {
+    console.debug('Fullscreen request notice:', err);
+  }
+}
+
+function resumeFullscreenAndDismissLock() {
+  requestAppFullscreen();
+  const lockModal = document.getElementById('fullscreen-lock-modal');
+  if (lockModal) lockModal.classList.remove('open');
+}
+
+function triggerTabSwitchViolation(reason = 'Tab switch detected') {
+  if (!isUserSprintActive()) return;
+
+  let violations = parseInt(localStorage.getItem('open_sourcery_tab_switch_count') || '0', 10) + 1;
+  localStorage.setItem('open_sourcery_tab_switch_count', violations.toString());
+
+  const countDisplay = document.getElementById('tab-switch-count-display');
+  if (countDisplay) countDisplay.textContent = violations;
+
+  const lockModal = document.getElementById('fullscreen-lock-modal');
+  if (lockModal) lockModal.classList.add('open');
+
+  if (git) {
+    git.recordAction('SECURITY_ALERT', `Focus violation #${violations} (${reason})`, currentContributor);
+    saveActiveRepository();
+  }
+}
+
+function handleFullscreenStateChange() {
+  const isFull = !!(document.fullscreenElement || document.webkitFullscreenElement || document.mozFullScreenElement || document.msFullscreenElement);
+  if (!isFull && isUserSprintActive()) {
+    triggerTabSwitchViolation('Exited full screen mode');
+  }
+}
+
+let guardsInitialized = false;
+function initFocusAndFullscreenGuards() {
+  if (guardsInitialized) return;
+  guardsInitialized = true;
+
+  document.addEventListener('fullscreenchange', handleFullscreenStateChange);
+  document.addEventListener('webkitfullscreenchange', handleFullscreenStateChange);
+  document.addEventListener('mozfullscreenchange', handleFullscreenStateChange);
+  document.addEventListener('MSFullscreenChange', handleFullscreenStateChange);
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden && isUserSprintActive()) {
+      triggerTabSwitchViolation('Switched browser tab / minimized window');
+    }
+  });
+
+  window.addEventListener('blur', () => {
+    if (isUserSprintActive()) {
+      triggerTabSwitchViolation('Window lost focus');
+    }
+  });
+}
+
 // --- Modal Helpers ---
 
 function openModal(id) {
