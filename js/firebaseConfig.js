@@ -187,9 +187,46 @@
       if (!rawParticipants || typeof rawParticipants !== 'object') return;
 
       const cleanParts = desanitizeFromFirebase(rawParticipants);
-      const participantsList = Object.values(cleanParts).filter(p => p && p.name);
+      const rawList = Object.values(cleanParts).filter(p => p && p.name);
 
-      if (participantsList.length === 0) return;
+      if (rawList.length === 0) return;
+
+      // Deduplicate participants by email / normalized name to completely eliminate duplicate entries
+      const dedupeMap = new Map();
+      rawList.forEach(p => {
+        const dedupeKey = (p.email && p.email !== 'N/A' && p.email.includes('@'))
+          ? p.email.trim().toLowerCase()
+          : (p.name || '').trim().toLowerCase();
+
+        if (!dedupeMap.has(dedupeKey)) {
+          dedupeMap.set(dedupeKey, { ...p });
+        } else {
+          const existing = dedupeMap.get(dedupeKey);
+          const higherXP = Math.max(existing.verifiedXP || 0, p.verifiedXP || 0);
+          const mergedMissions = Array.from(new Set([
+            ...(existing.completedMissions || []),
+            ...(p.completedMissions || [])
+          ]));
+          const violations = Math.max(existing.focusViolations || 0, p.focusViolations || 0);
+          const bestTimer = (typeof p.timerRemainingMs === 'number' && p.timerRemainingMs > 0 && p.timerRemainingMs < 15 * 60 * 1000)
+            ? p.timerRemainingMs
+            : existing.timerRemainingMs;
+
+          dedupeMap.set(dedupeKey, {
+            ...existing,
+            ...p,
+            id: existing.id || p.id,
+            verifiedXP: higherXP,
+            completedMissions: mergedMissions,
+            focusViolations: violations,
+            timerRemainingMs: bestTimer,
+            isDisqualified: Boolean(existing.isDisqualified || p.isDisqualified),
+            disqualifiedReason: existing.disqualifiedReason || p.disqualifiedReason || ''
+          });
+        }
+      });
+
+      const participantsList = Array.from(dedupeMap.values());
 
       // Hydrate all participants into local SessionStore so dossiers & tracking work
       participantsList.forEach(p => {
@@ -215,6 +252,7 @@
         isDisqualified: Boolean(p.isDisqualified),
         disqualifiedReason: p.disqualifiedReason || '',
         isOnline: Boolean(p.isOnline),
+        timerRemainingMs: p.timerRemainingMs,
         lastCompletedAt: p.lastActiveAt || Date.now(),
         registeredAt: p.registeredAt || Date.now()
       }));

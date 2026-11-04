@@ -188,15 +188,32 @@ function submitOnboardingRegistration(e) {
   const totalMs = 15 * 60 * 1000;
   let remainingMs = totalMs;
 
-  if (part && typeof part.timerRemainingMs === 'number') {
-    remainingMs = Math.max(0, part.timerRemainingMs);
-  } else {
-    const savedRemaining = localStorage.getItem(`open_sourcery_timer_remaining_${email.toLowerCase()}`) ||
-                           localStorage.getItem(`open_sourcery_timer_remaining_${name.toLowerCase()}`) ||
-                           localStorage.getItem('open_sourcery_timer_remaining_last');
-    if (savedRemaining && !isNaN(parseInt(savedRemaining, 10))) {
-      remainingMs = Math.max(0, parseInt(savedRemaining, 10));
-    }
+  const candidateTimes = [];
+  if (part && typeof part.timerRemainingMs === 'number' && part.timerRemainingMs > 0 && part.timerRemainingMs < totalMs) {
+    candidateTimes.push(part.timerRemainingMs);
+  }
+  const byEmail = email ? localStorage.getItem(`open_sourcery_timer_remaining_${email.toLowerCase()}`) : null;
+  if (byEmail && !isNaN(parseInt(byEmail, 10)) && parseInt(byEmail, 10) > 0 && parseInt(byEmail, 10) < totalMs) {
+    candidateTimes.push(parseInt(byEmail, 10));
+  }
+  const byName = name ? localStorage.getItem(`open_sourcery_timer_remaining_${name.toLowerCase()}`) : null;
+  if (byName && !isNaN(parseInt(byName, 10)) && parseInt(byName, 10) > 0 && parseInt(byName, 10) < totalMs) {
+    candidateTimes.push(parseInt(byName, 10));
+  }
+  const byLast = localStorage.getItem('open_sourcery_timer_remaining_last');
+  if (byLast && !isNaN(parseInt(byLast, 10)) && parseInt(byLast, 10) > 0 && parseInt(byLast, 10) < totalMs) {
+    candidateTimes.push(parseInt(byLast, 10));
+  }
+
+  if (candidateTimes.length > 0) {
+    remainingMs = Math.min(...candidateTimes);
+  }
+
+  // Update participant record with this exact remaining duration and sync
+  part.timerRemainingMs = remainingMs;
+  localStorage.setItem(`open_sourcery_participant_session-demo_${part.id}`, JSON.stringify(part));
+  if (typeof window !== 'undefined' && typeof window.syncParticipantToCloud === 'function') {
+    window.syncParticipantToCloud('session-demo', part);
   }
 
   // Re-calculate startTime so countdown resumes seamlessly with preserved remaining duration
@@ -2412,6 +2429,30 @@ function updateLeaderboardUI(optionalEntries) {
     window._cachedCloudLeaderboard = entries;
   }
 
+  // Deduplicate entries by email / normalized name so a participant never appears twice
+  const dedupeMap = new Map();
+  entries.forEach(e => {
+    if (!e || !e.name) return;
+    const key = (e.email && e.email !== 'N/A' && e.email.includes('@'))
+      ? e.email.trim().toLowerCase()
+      : e.name.trim().toLowerCase();
+    if (!dedupeMap.has(key)) {
+      dedupeMap.set(key, { ...e });
+    } else {
+      const prev = dedupeMap.get(key);
+      const higherXP = Math.max(prev.verifiedXP || 0, e.verifiedXP || 0);
+      const mergedMissions = Array.from(new Set([...(prev.completedMissions || []), ...(e.completedMissions || [])]));
+      dedupeMap.set(key, {
+        ...prev,
+        ...e,
+        verifiedXP: higherXP,
+        completedCount: mergedMissions.length,
+        completedMissions: mergedMissions
+      });
+    }
+  });
+  entries = Array.from(dedupeMap.values());
+
   // Ensure entries are ranked properly
   entries.sort((a, b) => (b.verifiedXP || 0) - (a.verifiedXP || 0));
   entries = entries.map((e, idx) => ({ ...e, rank: idx + 1 }));
@@ -2952,13 +2993,23 @@ function startTimer() {
 
   const updateCountdown = () => {
     const elapsed = Date.now() - startTime;
-    const remaining = totalMs - elapsed;
+    const remaining = Math.max(0, totalMs - elapsed);
 
-    // Continuously checkpoint remaining time every 5 seconds
+    // Continuously checkpoint remaining time every second
+    const curEmail = localStorage.getItem('open_sourcery_user_email');
+    if (curEmail) {
+      localStorage.setItem(`open_sourcery_timer_remaining_${curEmail.toLowerCase()}`, remaining.toString());
+    }
+    if (currentContributor) {
+      localStorage.setItem(`open_sourcery_timer_remaining_${currentContributor.toLowerCase()}`, remaining.toString());
+    }
+    localStorage.setItem('open_sourcery_timer_remaining_last', remaining.toString());
+
     if (Math.floor(elapsed / 1000) % 5 === 0) {
-      const curPart = SessionStore.getCurrentParticipant('session-demo');
+      let curPart = SessionStore.getCurrentParticipant('session-demo');
+      if (!curPart && curEmail) curPart = SessionStore.getParticipantByEmail('session-demo', curEmail);
       if (curPart) {
-        curPart.timerRemainingMs = Math.max(0, remaining);
+        curPart.timerRemainingMs = remaining;
         localStorage.setItem(`open_sourcery_participant_session-demo_${curPart.id}`, JSON.stringify(curPart));
       }
     }
@@ -3057,8 +3108,14 @@ function logoutParticipant() {
         timerInterval = null;
       }
 
-      const activeEmail = localStorage.getItem('open_sourcery_user_email') || '';
-      const curPart = SessionStore.getCurrentParticipant('session-demo');
+      const activeEmail = (localStorage.getItem('open_sourcery_user_email') || '').trim().toLowerCase();
+      let curPart = SessionStore.getCurrentParticipant('session-demo');
+      if (!curPart && activeEmail) {
+        curPart = SessionStore.getParticipantByEmail('session-demo', activeEmail);
+      }
+      if (!curPart && currentContributor) {
+        curPart = SessionStore.getParticipantByName('session-demo', currentContributor);
+      }
 
       // 2. Safely store remaining time on participant record and sync to cloud
       if (curPart) {

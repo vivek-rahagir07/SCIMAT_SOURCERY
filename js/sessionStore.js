@@ -326,14 +326,28 @@ class SessionStore {
     if (!email) return null;
     const target = email.trim().toLowerCase();
     const all = this.getAllParticipants(sessionId);
-    return all.find(p => (p.email || '').trim().toLowerCase() === target) || null;
+    const found = all.find(p => (p.email || '').trim().toLowerCase() === target);
+    if (found) return found;
+
+    if (typeof window !== 'undefined' && Array.isArray(window._cachedCloudLeaderboard)) {
+      const cloudMatch = window._cachedCloudLeaderboard.find(e => (e.email || '').trim().toLowerCase() === target);
+      if (cloudMatch) return cloudMatch;
+    }
+    return null;
   }
 
   static getParticipantByName(sessionId = 'session-demo', name = '') {
     if (!name) return null;
     const target = name.trim().toLowerCase();
     const all = this.getAllParticipants(sessionId);
-    return all.find(p => (p.name || '').trim().toLowerCase() === target) || null;
+    const found = all.find(p => (p.name || '').trim().toLowerCase() === target);
+    if (found) return found;
+
+    if (typeof window !== 'undefined' && Array.isArray(window._cachedCloudLeaderboard)) {
+      const cloudMatch = window._cachedCloudLeaderboard.find(e => (e.name || '').trim().toLowerCase() === target);
+      if (cloudMatch) return cloudMatch;
+    }
+    return null;
   }
 
   static getAllParticipants(sessionId = 'session-demo') {
@@ -368,29 +382,51 @@ class SessionStore {
     if (!existingParticipant && trimmedRoll) {
       const all = this.getAllParticipants(sessionId);
       existingParticipant = all.find(p => (p.rollNumber || '').toUpperCase() === trimmedRoll) || null;
+      if (!existingParticipant && typeof window !== 'undefined' && Array.isArray(window._cachedCloudLeaderboard)) {
+        existingParticipant = window._cachedCloudLeaderboard.find(e => (e.rollNumber || '').toUpperCase() === trimmedRoll) || null;
+      }
     }
     if (!existingParticipant && trimmedName) {
       existingParticipant = this.getParticipantByName(sessionId, trimmedName);
+    }
+
+    // Deterministic ID derived from email, roll number, or name to eliminate duplicate creations
+    const cleanKey = (trimmedEmail || trimmedRoll || trimmedName).toLowerCase().replace(/[^a-z0-9]/g, '_');
+    const deterministicId = `part_${cleanKey}`;
+
+    if (!existingParticipant) {
+      const byId = this.getParticipant(sessionId, deterministicId);
+      if (byId) existingParticipant = byId;
     }
 
     let participant;
     let isReLogin = false;
 
     if (existingParticipant) {
-      // Re-login with same ID: PRESERVE score, XP, missions, and timer
+      // Re-login: PRESERVE score, XP, missions, and timer
       isReLogin = true;
-      participant = existingParticipant;
-      if (trimmedName) participant.name = trimmedName;
-      if (trimmedEmail && !participant.email) participant.email = trimmedEmail;
-      if (trimmedRoll && !participant.rollNumber) participant.rollNumber = trimmedRoll;
-      if (trimmedGithub && !participant.githubUsername) participant.githubUsername = trimmedGithub;
-      participant.lastActiveAt = Date.now();
-      participant.isOnline = true;
-    } else {
-      // First-time registration
-      const participantId = `part_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
       participant = {
-        id: participantId,
+        ...existingParticipant,
+        id: existingParticipant.id || existingParticipant.participantId || deterministicId,
+        sessionId,
+        name: trimmedName || existingParticipant.name,
+        email: trimmedEmail || existingParticipant.email || '',
+        rollNumber: trimmedRoll || existingParticipant.rollNumber || '',
+        githubUsername: trimmedGithub || existingParticipant.githubUsername || '',
+        verifiedXP: existingParticipant.verifiedXP || 0,
+        completedMissions: existingParticipant.completedMissions || [],
+        focusViolations: existingParticipant.focusViolations || 0,
+        lastActiveAt: Date.now(),
+        isOnline: true
+      };
+
+      if (typeof existingParticipant.timerRemainingMs === 'number') {
+        participant.timerRemainingMs = existingParticipant.timerRemainingMs;
+      }
+    } else {
+      // First-time registration with deterministic ID
+      participant = {
+        id: deterministicId,
         sessionId,
         name: trimmedName,
         email: trimmedEmail,
@@ -845,34 +881,59 @@ class SessionStore {
 
     // Index all registered participants
     participants.forEach(p => {
-      if (p.name && disqualified.includes(p.name.toLowerCase())) return;
+      if (!p || !p.name) return;
+      if (disqualified.includes(p.name.toLowerCase())) return;
+
+      const dedupeKey = (p.email && p.email !== 'N/A' && p.email.includes('@'))
+        ? p.email.trim().toLowerCase()
+        : p.name.trim().toLowerCase();
 
       const violations = p.focusViolations || (p.name === this.getActiveContributor() ? parseInt(localStorage.getItem('open_sourcery_tab_switch_count') || '0', 10) : 0);
       const isDisq = Boolean(p.isDisqualified);
-      map.set(p.name.toLowerCase(), {
-        participantId: p.id,
-        name: p.name,
-        email: p.email || '',
-        rollNumber: p.rollNumber || 'PARTICIPANT',
-        githubUsername: p.githubUsername || '',
-        verifiedXP: p.verifiedXP || 0,
-        completedCount: (p.completedMissions || []).length,
-        completedMissions: p.completedMissions || [],
-        focusViolations: violations,
-        isDisqualified: isDisq,
-        disqualifiedReason: p.disqualifiedReason || '',
-        lastCompletedAt: p.lastActiveAt || Date.now(),
-        isOnline: isDisq ? false : Boolean(p.isOnline),
-        registeredAt: p.registeredAt || Date.now()
-      });
+
+      if (!map.has(dedupeKey)) {
+        map.set(dedupeKey, {
+          participantId: p.id,
+          name: p.name,
+          email: p.email || '',
+          rollNumber: p.rollNumber || 'PARTICIPANT',
+          githubUsername: p.githubUsername || '',
+          verifiedXP: p.verifiedXP || 0,
+          completedCount: (p.completedMissions || []).length,
+          completedMissions: p.completedMissions || [],
+          focusViolations: violations,
+          isDisqualified: isDisq,
+          disqualifiedReason: p.disqualifiedReason || '',
+          timerRemainingMs: p.timerRemainingMs,
+          lastCompletedAt: p.lastActiveAt || Date.now(),
+          isOnline: isDisq ? false : Boolean(p.isOnline),
+          registeredAt: p.registeredAt || Date.now()
+        });
+      } else {
+        const existing = map.get(dedupeKey);
+        const higherXP = Math.max(existing.verifiedXP || 0, p.verifiedXP || 0);
+        const mergedMissions = Array.from(new Set([...(existing.completedMissions || []), ...(p.completedMissions || [])]));
+        map.set(dedupeKey, {
+          ...existing,
+          ...p,
+          verifiedXP: higherXP,
+          completedCount: mergedMissions.length,
+          completedMissions: mergedMissions,
+          focusViolations: Math.max(existing.focusViolations || 0, violations)
+        });
+      }
     });
 
     // Merge in any custom contributors that weren't stored as participant record
     contributors.forEach(c => {
-      const key = (c.name || '').toLowerCase();
-      if (!map.has(key) && c.name && !disqualified.includes(key)) {
+      if (!c || !c.name) return;
+      const key = (c.email && c.email.includes('@'))
+        ? c.email.trim().toLowerCase()
+        : c.name.trim().toLowerCase();
+
+      if (!map.has(key) && !disqualified.includes(c.name.toLowerCase())) {
         map.set(key, {
-          participantId: `part_${c.name}`,
+          participantId: `part_${c.name.toLowerCase().replace(/[^a-z0-9]/g, '_')}`,
           name: c.name,
           email: c.email || '',
           rollNumber: c.rollNumber || 'CONTRIBUTOR',
@@ -892,10 +953,24 @@ class SessionStore {
     if (typeof window !== 'undefined' && Array.isArray(window._cachedCloudLeaderboard)) {
       window._cachedCloudLeaderboard.forEach(entry => {
         if (!entry || !entry.name) return;
-        const key = entry.name.toLowerCase();
-        if (disqualified.includes(key)) return;
-        if (!map.has(key) || (entry.verifiedXP || 0) > (map.get(key).verifiedXP || 0)) {
+        const key = (entry.email && entry.email !== 'N/A' && entry.email.includes('@'))
+          ? entry.email.trim().toLowerCase()
+          : entry.name.trim().toLowerCase();
+
+        if (disqualified.includes(entry.name.toLowerCase())) return;
+        if (!map.has(key)) {
           map.set(key, entry);
+        } else {
+          const existing = map.get(key);
+          const higherXP = Math.max(existing.verifiedXP || 0, entry.verifiedXP || 0);
+          const mergedMissions = Array.from(new Set([...(existing.completedMissions || []), ...(entry.completedMissions || [])]));
+          map.set(key, {
+            ...existing,
+            ...entry,
+            verifiedXP: higherXP,
+            completedCount: mergedMissions.length,
+            completedMissions: mergedMissions
+          });
         }
       });
     }
