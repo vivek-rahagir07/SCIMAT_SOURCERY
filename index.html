@@ -1062,14 +1062,27 @@
           <h3 style="font-size: 1.25rem; font-weight: 800; color: #fff; margin-bottom: 0.4rem;">
             Check Your Inbox
           </h3>
-          <p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 1.5rem; line-height: 1.5;">
-            We've sent a 6-digit verification code to:<br/>
+          <p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 1rem; line-height: 1.5;">
+            Verification request created for:<br/>
             <strong id="otp-display-email" style="color: var(--accent-cyan); font-family: var(--font-mono); font-size: 0.95rem;">student.25cse@bmu.edu.in</strong>
           </p>
 
+          <!-- Instant Passcode Display Banner (Guarantees zero delays during workshop) -->
+          <div style="background: rgba(54, 228, 212, 0.1); border: 1px dashed var(--accent-cyan); border-radius: 8px; padding: 0.75rem 1rem; margin-bottom: 1.25rem; width: 100%;">
+            <div style="font-size: 0.75rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600;">
+              ⚡ Your Session Passcode:
+            </div>
+            <div id="otp-live-display-code" style="font-family: var(--font-mono); font-size: 2.2rem; font-weight: 800; color: var(--accent-cyan); letter-spacing: 0.25em; margin: 0.25rem 0;">
+              ------
+            </div>
+            <button type="button" class="btn btn-sm btn-cyan" onclick="autoFillOtpCode()" style="font-size: 0.78rem; padding: 0.25rem 0.65rem; margin-top: 0.2rem;">
+              ⚡ Click to Auto-Fill Passcode
+            </button>
+          </div>
+
           <form id="otp-verification-form" onsubmit="submitOtpVerification(event)" style="display: flex; flex-direction: column; align-items: center; gap: 1rem;">
             <div style="width: 100%;">
-              <input type="text" id="otp-input-code" required maxlength="6" pattern="[0-9A-Za-z]{6,7}" placeholder="• • • • • •" autocomplete="one-time-code" style="width: 100%; max-width: 280px; text-align: center; font-family: var(--font-mono); font-size: 2rem; font-weight: 800; letter-spacing: 0.3em; padding: 0.6rem 0.5rem; background: var(--bg-primary); border: 2px solid var(--accent-cyan); border-radius: var(--radius-md); color: #fff; box-shadow: 0 0 15px rgba(54, 228, 212, 0.2);" />
+              <input type="text" id="otp-input-code" required maxlength="7" placeholder="• • • • • •" autocomplete="one-time-code" style="width: 100%; max-width: 280px; text-align: center; font-family: var(--font-mono); font-size: 2rem; font-weight: 800; letter-spacing: 0.3em; padding: 0.6rem 0.5rem; background: var(--bg-primary); border: 2px solid var(--accent-cyan); border-radius: var(--radius-md); color: #fff; box-shadow: 0 0 15px rgba(54, 228, 212, 0.2);" />
             </div>
 
             <div style="font-size: 0.8rem; color: var(--text-dim); display: flex; align-items: center; gap: 0.5rem;">
