@@ -354,6 +354,32 @@ class GitSimulator {
     return { success: true, status: issue.status, issue, message: `${actionLabel} Issue #${issue.number}` };
   }
 
+  deleteIssue(issueIdentifier, removedBy = 'Admin') {
+    if (!this.state.issues) this.state.issues = [];
+    const idx = this.state.issues.findIndex(
+      i => i.id === issueIdentifier || String(i.number) === String(issueIdentifier)
+    );
+    if (idx === -1) {
+      return { success: false, message: `Issue #${issueIdentifier} not found.` };
+    }
+    const removed = this.state.issues.splice(idx, 1)[0];
+    this.recordAction('DELETE_ISSUE', `Removed Issue #${removed.number}: ${removed.title} (by ${removedBy})`, removedBy);
+    return { success: true, message: `Deleted Issue #${removed.number}: "${removed.title}"`, issue: removed };
+  }
+
+  deletePullRequest(prIdentifier, removedBy = 'Admin') {
+    if (!this.state.pullRequests) this.state.pullRequests = [];
+    const idx = this.state.pullRequests.findIndex(
+      p => p.id === prIdentifier || String(p.number) === String(prIdentifier)
+    );
+    if (idx === -1) {
+      return { success: false, message: `Pull Request #${prIdentifier} not found.` };
+    }
+    const removed = this.state.pullRequests.splice(idx, 1)[0];
+    this.recordAction('DELETE_PR', `Removed Pull Request #${removed.number}: ${removed.title} (by ${removedBy})`, removedBy);
+    return { success: true, message: `Deleted Pull Request #${removed.number}: "${removed.title}"`, pullRequest: removed };
+  }
+
   createPullRequest(title, description, author = 'Student', baseBranch = 'main', headBranch) {
     let safeAuthor = typeof author === 'string' ? author.trim() : 'Student';
     if (!headBranch || headBranch === baseBranch) {
@@ -714,6 +740,12 @@ ${pr.description || '(No description provided)'}
           return res.message;
         }
 
+        if (prAction === 'delete' || prAction === 'remove') {
+          const targetNum = parseInt(positional[1] || positional[0] || (this.state.pullRequests[0]?.number), 10);
+          const res = this.deletePullRequest(targetNum, author);
+          return res.success ? `✓ ${res.message}` : `error: ${res.message}`;
+        }
+
         return `gh: unknown pr command '${prAction}'. Run "help" for details.`;
       }
 
@@ -763,8 +795,14 @@ ${issue.description || '(No description provided)'}
           const targetNum = parseInt(positional[1] || positional[0] || '1', 10);
           const issue = (this.state.issues || []).find(i => i.number === targetNum);
           if (!issue) return `error: issue #${targetNum} not found`;
-          this.closeIssue(issue.id, author);
+          this.toggleIssueStatus(issue.id, author);
           return `✓ Closed issue #${issue.number} ("${issue.title}")`;
+        }
+
+        if (issueAction === 'delete' || issueAction === 'remove') {
+          const targetNum = parseInt(positional[1] || positional[0] || '1', 10);
+          const res = this.deleteIssue(targetNum, author);
+          return res.success ? `✓ ${res.message}` : `error: ${res.message}`;
         }
 
         return `gh: unknown issue command '${issueAction}'. Run "help" for details.`;

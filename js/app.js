@@ -1183,13 +1183,16 @@ function renderIssuesTab() {
     return;
   }
 
+  const canModerate = isOrganizerOrAdmin();
+
   listEl.innerHTML = filteredIssues.map(issue => {
     const isClosed = issue.status === 'closed';
+    const canDeleteThis = canModerate || issue.author === currentContributor;
     return `
       <div class="issue-item">
         <span class="${isClosed ? 'status-icon-purple' : 'status-icon-green'}">${isClosed ? '✓' : '⊙'}</span>
-        <div class="item-content">
-          <div class="item-title" onclick="openIssueModal('${issue.id}')">
+        <div class="item-content" onclick="openIssueModal('${issue.id}')" style="cursor: pointer;">
+          <div class="item-title">
             <span style="${isClosed ? 'text-decoration: line-through; color: var(--text-muted);' : ''}">${escapeHtml(issue.title)}</span>
             <div class="item-labels">
               ${isClosed ? '<span class="label-pill" style="background: rgba(163, 113, 247, 0.2); color: var(--accent-purple);">Closed</span>' : ''}
@@ -1200,8 +1203,11 @@ function renderIssuesTab() {
             #${issue.number} ${isClosed ? 'closed' : 'opened'} by <strong>${issue.author}</strong> • ${new Date(issue.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
           </div>
         </div>
-        <div style="font-size: 0.75rem; color: var(--text-dim);">
-          💬 ${issue.comments ? issue.comments.length : 0}
+        <div style="display: flex; align-items: center; gap: 0.65rem;">
+          <span style="font-size: 0.75rem; color: var(--text-dim);">💬 ${issue.comments ? issue.comments.length : 0}</span>
+          ${canDeleteThis ? `
+            <button class="btn btn-xs btn-danger" onclick="event.stopPropagation(); adminDeleteIssuePrompt('${issue.id}')" title="Delete Issue">🗑️ Delete</button>
+          ` : ''}
         </div>
       </div>
     `;
@@ -1255,9 +1261,16 @@ function openIssueModal(issueId) {
             ${isClosed ? 'CLOSED ✓' : 'OPEN ⊙'}
           </span>
         </div>
-        <button class="btn btn-sm ${isClosed ? 'btn-cyan' : 'btn-danger'}" onclick="toggleCloseIssue('${issue.id}')">
-          ${isClosed ? 'Reopen Issue' : 'Close Issue'}
-        </button>
+        <div style="display: flex; gap: 0.4rem; align-items: center;">
+          <button class="btn btn-sm ${isClosed ? 'btn-cyan' : 'btn-danger'}" onclick="toggleCloseIssue('${issue.id}')">
+            ${isClosed ? 'Reopen Issue' : 'Close Issue'}
+          </button>
+          ${(isOrganizerOrAdmin() || issue.author === currentContributor) ? `
+            <button class="btn btn-sm btn-danger" onclick="adminDeleteIssuePrompt('${issue.id}')" title="Delete this issue permanently">
+              🗑️ Delete Issue
+            </button>
+          ` : ''}
+        </div>
       </div>
       <div style="background: var(--bg-tertiary); padding: 1rem; border-radius: var(--radius-md); border: 1px solid var(--border-color); margin-bottom: 1rem; line-height: 1.5;">
         ${escapeHtml(issue.description)}
@@ -1361,17 +1374,20 @@ function renderPRsTab() {
     return;
   }
 
+  const canModerate = isOrganizerOrAdmin();
+
   listEl.innerHTML = filteredPRs.map(pr => {
     const isMerged = pr.status === 'merged';
     const isClosed = pr.status === 'closed';
     const iconClass = isMerged ? 'status-icon-purple' : isClosed ? 'status-icon-red' : 'status-icon-green';
     const iconSym = isMerged ? '🟣' : isClosed ? '⚪' : '🟢';
+    const canDeleteThis = canModerate || pr.author === currentContributor;
 
     return `
       <div class="pr-item">
         <span class="${iconClass}">${iconSym}</span>
-        <div class="item-content">
-          <div class="item-title" onclick="openPRModal('${pr.id}')">
+        <div class="item-content" onclick="openPRModal('${pr.id}')" style="cursor: pointer;">
+          <div class="item-title">
             <span>${escapeHtml(pr.title)}</span>
             <span class="badge" style="font-family: var(--font-mono);">${pr.headBranch} → ${pr.baseBranch}</span>
             ${isMerged ? '<span class="badge" style="background: rgba(163, 113, 247, 0.2); color: var(--accent-purple);">MERGED</span>' : ''}
@@ -1381,8 +1397,11 @@ function renderPRsTab() {
             #${pr.number} opened by <strong>${pr.author}</strong> • ${pr.reviews?.length || 0} reviews • CI: <span style="color: var(--accent-green);">Passed ✓</span>
           </div>
         </div>
-        <div style="font-size: 0.75rem; color: var(--text-dim);">
-          💬 ${(pr.comments ? pr.comments.length : 0) + (pr.reviews ? pr.reviews.length : 0)}
+        <div style="display: flex; align-items: center; gap: 0.65rem;">
+          <span style="font-size: 0.75rem; color: var(--text-dim);">💬 ${(pr.comments ? pr.comments.length : 0) + (pr.reviews ? pr.reviews.length : 0)}</span>
+          ${canDeleteThis ? `
+            <button class="btn btn-xs btn-danger" onclick="event.stopPropagation(); adminDeletePRPrompt('${pr.id}')" title="Delete Pull Request">🗑️ Delete</button>
+          ` : ''}
         </div>
       </div>
     `;
@@ -1486,6 +1505,11 @@ function openPRModal(prId) {
           ${!isMerged ? `
             <button class="btn btn-sm ${isClosed ? 'btn-cyan' : 'btn-danger'}" onclick="toggleClosePR('${pr.id}')">
               ${isClosed ? 'Reopen PR' : 'Close PR'}
+            </button>
+          ` : ''}
+          ${(isOrganizerOrAdmin() || pr.author === currentContributor) ? `
+            <button class="btn btn-sm btn-danger" onclick="adminDeletePRPrompt('${pr.id}')" title="Delete this PR permanently">
+              🗑️ Delete PR
             </button>
           ` : ''}
         </div>
@@ -2730,7 +2754,7 @@ function openParticipantDossier(participantId, name) {
       ${userPRs.length === 0
         ? '<div style="color: var(--text-dim); font-size: 0.8rem; padding: 0.5rem; background: var(--bg-primary); border-radius: var(--radius-sm);">No pull requests opened by this participant yet.</div>'
         : userPRs.map(pr => `
-          <div class="dossier-item-card">
+          <div class="dossier-item-card" style="display: flex; justify-content: space-between; align-items: center;">
             <div>
               <span class="pr-status-pill pr-status-${pr.status}" style="font-size: 0.65rem; padding: 0.15rem 0.4rem; margin-right: 0.4rem;">
                 ${pr.status === 'merged' ? '🟣 Merged' : '🟢 Open'}
@@ -2738,8 +2762,9 @@ function openParticipantDossier(participantId, name) {
               <strong>#${pr.number} ${escapeHtml(pr.title)}</strong>
               <span style="color: var(--text-dim); font-size: 0.75rem; margin-left: 0.4rem;">(${escapeHtml(pr.headBranch)} → ${escapeHtml(pr.baseBranch)})</span>
             </div>
-            <div style="color: var(--text-dim); font-size: 0.75rem;">
-              ${formatRelativeTime(pr.createdAt)}
+            <div style="display: flex; align-items: center; gap: 0.5rem;">
+              <span style="color: var(--text-dim); font-size: 0.75rem;">${formatRelativeTime(pr.createdAt)}</span>
+              <button class="btn btn-xs btn-danger" onclick="adminDeletePRPrompt('${pr.id}')" title="Admin: Delete PR">🗑️ Delete</button>
             </div>
           </div>
         `).join('')}
@@ -2753,15 +2778,16 @@ function openParticipantDossier(participantId, name) {
       ${userIssues.length === 0
         ? '<div style="color: var(--text-dim); font-size: 0.8rem; padding: 0.5rem; background: var(--bg-primary); border-radius: var(--radius-sm);">No issues opened by this participant yet.</div>'
         : userIssues.map(i => `
-          <div class="dossier-item-card">
+          <div class="dossier-item-card" style="display: flex; justify-content: space-between; align-items: center;">
             <div>
               <span class="badge" style="background: ${i.status === 'open' ? 'rgba(54, 228, 212, 0.2)' : 'rgba(139, 148, 158, 0.2)'}; color: ${i.status === 'open' ? 'var(--accent-cyan)' : 'var(--text-dim)'}; font-size: 0.65rem; margin-right: 0.4rem;">
                 ${i.status === 'open' ? '🟢 Open' : '🟣 Closed'}
               </span>
               <strong>#${i.number} ${escapeHtml(i.title)}</strong>
             </div>
-            <div style="color: var(--text-dim); font-size: 0.75rem;">
-              ${formatRelativeTime(i.createdAt)}
+            <div style="display: flex; align-items: center; gap: 0.5rem;">
+              <span style="color: var(--text-dim); font-size: 0.75rem;">${formatRelativeTime(i.createdAt)}</span>
+              <button class="btn btn-xs btn-danger" onclick="adminDeleteIssuePrompt('${i.id}')" title="Admin: Delete Issue">🗑️ Delete</button>
             </div>
           </div>
         `).join('')}
@@ -2869,6 +2895,80 @@ function isAdminAuthenticated() {
   return sessionStorage.getItem('open_sourcery_admin_auth') === 'true';
 }
 
+function isOrganizerOrAdmin() {
+  return isAdminAuthenticated() || currentContributor === 'Vivek' || currentContributor === 'Vivek Yadav';
+}
+
+function adminDeleteIssuePrompt(issueId) {
+  const issue = (git ? git.getState().issues : []).find(
+    i => i.id === issueId || String(i.number) === String(issueId)
+  );
+  if (!issue) {
+    showToast('Issue not found.', 'error');
+    return;
+  }
+
+  showConfirmDialog({
+    title: 'Delete Issue',
+    message: `Are you sure you want to permanently delete Issue #${issue.number}: "${escapeHtml(issue.title)}" created by ${escapeHtml(issue.author)}? This action cannot be undone.`,
+    confirmText: 'Yes, Delete Issue',
+    confirmClass: 'btn-danger',
+    icon: '🗑️',
+    onConfirm: () => {
+      const res = git.deleteIssue(issue.id, currentContributor);
+      if (res.success) {
+        saveActiveRepository();
+        renderAll();
+        closeModal('issue-detail-modal');
+        const curDossierTitle = document.getElementById('dossier-modal-title');
+        if (curDossierTitle && curDossierTitle.textContent.includes('—')) {
+          const authorName = curDossierTitle.textContent.split('—')[1].trim();
+          openParticipantDossier(authorName, authorName);
+        }
+        updateAdminUI();
+        showToast(res.message, 'success');
+      } else {
+        showToast(res.message, 'error');
+      }
+    }
+  });
+}
+
+function adminDeletePRPrompt(prId) {
+  const pr = (git ? git.getState().pullRequests : []).find(
+    p => p.id === prId || String(p.number) === String(prId)
+  );
+  if (!pr) {
+    showToast('Pull Request not found.', 'error');
+    return;
+  }
+
+  showConfirmDialog({
+    title: 'Delete Pull Request',
+    message: `Are you sure you want to permanently delete Pull Request #${pr.number}: "${escapeHtml(pr.title)}" created by ${escapeHtml(pr.author)}? This action cannot be undone.`,
+    confirmText: 'Yes, Delete Pull Request',
+    confirmClass: 'btn-danger',
+    icon: '🗑️',
+    onConfirm: () => {
+      const res = git.deletePullRequest(pr.id, currentContributor);
+      if (res.success) {
+        saveActiveRepository();
+        renderAll();
+        closeModal('pr-detail-modal');
+        const curDossierTitle = document.getElementById('dossier-modal-title');
+        if (curDossierTitle && curDossierTitle.textContent.includes('—')) {
+          const authorName = curDossierTitle.textContent.split('—')[1].trim();
+          openParticipantDossier(authorName, authorName);
+        }
+        updateAdminUI();
+        showToast(res.message, 'success');
+      } else {
+        showToast(res.message, 'error');
+      }
+    }
+  });
+}
+
 function openAdminPortal() {
   if (isAdminAuthenticated()) {
     if (typeof window.refreshLiveLeaderboardNow === 'function') {
@@ -2920,6 +3020,53 @@ function logoutAdmin() {
 }
 
 function updateAdminUI() {
+  // 1. Render Submissions Moderation (Issues & Pull Requests)
+  const modEl = document.getElementById('admin-moderation-items');
+  if (modEl && git) {
+    const state = git.getState();
+    const issues = state.issues || [];
+    const prs = state.pullRequests || [];
+
+    if (issues.length === 0 && prs.length === 0) {
+      modEl.innerHTML = '<div style="color: var(--text-dim); padding: 0.75rem; text-align: center; font-size: 0.8rem;">No issues or pull requests present in the repository.</div>';
+    } else {
+      let html = '<div style="display: flex; flex-direction: column; gap: 0.45rem;">';
+      issues.forEach(i => {
+        html += `
+          <div style="display: flex; justify-content: space-between; align-items: center; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: var(--radius-sm); padding: 0.45rem 0.75rem; font-size: 0.78rem;">
+            <div style="display: flex; align-items: center; gap: 0.5rem; flex: 1; min-width: 0;">
+              <span class="badge" style="background: rgba(54, 228, 212, 0.15); color: var(--accent-cyan); font-size: 0.65rem;">Issue #${i.number}</span>
+              <strong style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${escapeHtml(i.title)}</strong>
+              <span style="color: var(--text-dim); font-size: 0.72rem;">by <strong>${escapeHtml(i.author)}</strong></span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 0.5rem; margin-left: 0.75rem;">
+              <span class="badge" style="font-size: 0.65rem;">${i.status}</span>
+              <button class="btn btn-xs btn-danger" onclick="adminDeleteIssuePrompt('${i.id}')" title="Permanently delete issue">🗑️ Delete</button>
+            </div>
+          </div>
+        `;
+      });
+      prs.forEach(p => {
+        html += `
+          <div style="display: flex; justify-content: space-between; align-items: center; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: var(--radius-sm); padding: 0.45rem 0.75rem; font-size: 0.78rem;">
+            <div style="display: flex; align-items: center; gap: 0.5rem; flex: 1; min-width: 0;">
+              <span class="badge" style="background: rgba(163, 113, 247, 0.15); color: var(--accent-purple); font-size: 0.65rem;">PR #${p.number}</span>
+              <strong style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${escapeHtml(p.title)}</strong>
+              <span style="color: var(--text-dim); font-size: 0.72rem;">by <strong>${escapeHtml(p.author)}</strong> (${escapeHtml(p.headBranch)} → ${escapeHtml(p.baseBranch)})</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 0.5rem; margin-left: 0.75rem;">
+              <span class="badge" style="font-size: 0.65rem;">${p.status}</span>
+              <button class="btn btn-xs btn-danger" onclick="adminDeletePRPrompt('${p.id}')" title="Permanently delete pull request">🗑️ Delete</button>
+            </div>
+          </div>
+        `;
+      });
+      html += '</div>';
+      modEl.innerHTML = html;
+    }
+  }
+
+  // 2. Render Live Audit Logs
   const auditLogsEl = document.getElementById('admin-audit-logs');
   if (auditLogsEl) {
     const logs = SessionStore.getAuditLogs('session-demo');
