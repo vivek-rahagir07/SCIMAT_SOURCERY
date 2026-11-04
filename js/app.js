@@ -64,6 +64,8 @@ function initApp() {
 
   if (!isRegistered && !isAdmin) {
     if (overlay) overlay.style.display = 'flex';
+    const closeBtn = document.getElementById('onboarding-close-btn');
+    if (closeBtn) closeBtn.style.display = 'none';
   } else {
     if (overlay) overlay.style.display = 'none';
   }
@@ -2958,7 +2960,15 @@ function restartSprintTimer() {
 
 function openOnboardingModal() {
   const overlay = document.getElementById('onboarding-overlay');
+  const closeBtn = document.getElementById('onboarding-close-btn');
+  const isRegistered = localStorage.getItem('open_sourcery_user_registered') === 'true';
+  if (closeBtn) closeBtn.style.display = isRegistered ? 'flex' : 'none';
   if (overlay) overlay.style.display = 'flex';
+}
+
+function closeOnboardingModal() {
+  const overlay = document.getElementById('onboarding-overlay');
+  if (overlay) overlay.style.display = 'none';
 }
 
 // --- Participant Logout ---
