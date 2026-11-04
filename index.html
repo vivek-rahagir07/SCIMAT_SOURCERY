@@ -51,7 +51,7 @@
 
                 <div class="onboarding-field">
                   <label for="onboarding-email-input">✉️ COLLEGE EMAIL ID *</label>
-                  <input type="email" id="onboarding-email-input" required placeholder="e.g. vivek.yadav.25cse@bmu.edu.in" autocomplete="email" />
+                  <input type="email" id="onboarding-email-input" required placeholder="e.g. vivek.yadav.25cse@bmu.edu.in" pattern=".+@bmu\.edu\.in$" title="Please enter your official college email address ending with @bmu.edu.in" autocomplete="email" />
                 </div>
 
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem;">
@@ -198,14 +198,10 @@
         </div>
       </div>
 
-      <!-- Right Action Items: Terminal, Live Leaderboard, Missions Drawer, Admin Portal, Contributor Switcher -->
+      <!-- Right Action Items: Terminal, Missions Drawer, Participant Info -->
       <div class="nav-right">
         <button id="btn-terminal-toggle" class="btn" title="Toggle Git CLI Terminal (Press ` key)">
           <span>💻 Terminal</span>
-        </button>
-
-        <button id="btn-public-leaderboard" class="btn" onclick="openPublicLeaderboardModal()" title="View Live Workshop Leaderboard">
-          <span>🏆 Leaderboard</span>
         </button>
 
         <button id="btn-missions-toggle" class="btn btn-cyan" title="Open Workshop Missions">
@@ -213,35 +209,19 @@
           <span id="missions-count-badge" class="badge">0/8 Completed</span>
         </button>
 
-        <button id="btn-admin-modal" class="btn" title="Admin Portal & Workshop Console">
-          <span>⚙️ Admin Portal</span>
-        </button>
-
-        <!-- Contributor Switcher ("Working as...") -->
-        <div class="contributor-switcher-wrap">
-          <div class="user-profile-pill" onclick="toggleContributorDropdown()">
-            <div id="nav-user-avatar" class="user-avatar">V</div>
-            <div>
-              <div style="display: flex; align-items: center; gap: 0.3rem;">
-                <span style="color: var(--text-dim); font-size: 0.7rem;">Working as:</span>
-                <strong id="nav-user-name">Vivek</strong>
-                <span style="font-size: 0.65rem;">▼</span>
-              </div>
-              <div style="display: flex; gap: 0.35rem; align-items: center;">
-                <span id="nav-user-xp" class="user-xp">0 XP</span>
-                <span style="color: var(--text-dim); font-size: 0.65rem;">(Click to switch)</span>
-              </div>
+        <!-- Participant Profile & Points -->
+        <div class="user-profile-pill" style="cursor: default;" title="Your Active Participant Profile & XP">
+          <div id="nav-user-avatar" class="user-avatar">P</div>
+          <div>
+            <div style="display: flex; align-items: center; gap: 0.3rem;">
+              <span style="color: var(--text-dim); font-size: 0.7rem;">Participant:</span>
+              <strong id="nav-user-name">Student</strong>
+            </div>
+            <div style="display: flex; gap: 0.35rem; align-items: center;">
+              <span id="nav-user-xp" class="user-xp">0 XP</span>
             </div>
           </div>
-
-          <!-- Contributor Dropdown Menu -->
-          <div id="contributor-dropdown-menu" class="contributor-dropdown-menu"></div>
         </div>
-
-        <!-- Participant Logout Button -->
-        <button id="btn-participant-logout" class="btn btn-sm btn-danger" onclick="logoutParticipant()" title="Log out current participant and return to registration" style="margin-left: 0.25rem;">
-          <span>🚪 Logout</span>
-        </button>
       </div>
     </header>
 
@@ -252,18 +232,8 @@
           <span>📁</span>
           <span class="repo-owner" id="active-repo-owner">open-sourcery</span>
           <span style="color: var(--text-dim);">/</span>
-
-          <!-- Multi-Repository Switcher -->
-          <div class="repo-switcher-wrap">
-            <button class="repo-select-btn" onclick="toggleRepoDropdown()">
-              <span id="active-repo-name-btn">college-website</span>
-              <span style="font-size: 0.7rem; color: var(--text-dim);">▼</span>
-            </button>
-            <div id="repo-dropdown-menu" class="repo-dropdown-menu"></div>
-          </div>
-
-          <span id="repo-visibility-badge" class="repo-visibility">Public</span>
-          <button class="btn btn-sm btn-cyan" onclick="openNewRepoModal()" style="margin-left: 0.5rem;">+ New Repo</button>
+          <strong id="active-repo-name-btn" style="color: var(--accent-cyan); font-weight: 700; font-size: 1.05rem;">college-website</strong>
+          <span id="repo-visibility-badge" class="repo-visibility" style="margin-left: 0.35rem;">Individual Workspace</span>
         </div>
 
         <div class="repo-actions-pills">
@@ -1062,41 +1032,42 @@
       </div>
     </div>
 
-    <!-- Time-Up Modal -->
-    <div id="time-up-modal" class="modal-backdrop">
-      <div class="modal-window" style="max-width: 480px; text-align: center;">
-        <div class="modal-header">
-          <div class="modal-title" style="display: flex; align-items: center; gap: 0.5rem; justify-content: center; width: 100%;">
-            <span>⏱️</span>
-            <span>15-Minute Sprint Completed!</span>
+    <!-- Time-Up / Final Score Submission Modal -->
+    <div id="time-up-modal" class="modal-backdrop" style="backdrop-filter: blur(25px); background: rgba(5, 8, 15, 0.96); z-index: 999999;">
+      <div class="modal-window" style="max-width: 500px; text-align: center; border: 2px solid var(--accent-cyan); box-shadow: 0 0 50px rgba(54, 228, 212, 0.35);">
+        <div class="modal-header" style="background: rgba(54, 228, 212, 0.12); border-bottom: 1px solid var(--accent-cyan); justify-content: center;">
+          <div class="modal-title" style="color: var(--accent-cyan); display: flex; align-items: center; justify-content: center; width: 100%; gap: 0.5rem; font-weight: 800; font-size: 1.15rem; letter-spacing: 0.05em;">
+            <span>🏁</span>
+            <span>ASSESSMENT CONCLUDED</span>
           </div>
-          <button class="btn btn-sm modal-close-btn">✕</button>
         </div>
-        <div class="modal-body" style="padding: 1.5rem 1.25rem;">
-          <div style="font-size: 2.5rem; margin-bottom: 0.5rem;">🎉</div>
-          <h3 style="font-size: 1.2rem; margin-bottom: 0.5rem; color: var(--accent-cyan);">Time's Up! Great Effort!</h3>
-          <p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 1.25rem;">
-            Your 15-minute Git & GitHub sprint has concluded. Here is your final workshop score:
+        <div class="modal-body" style="padding: 2rem 1.5rem;">
+          <div style="font-size: 3.5rem; margin-bottom: 0.5rem;">🎉</div>
+          <h2 style="font-size: 1.4rem; font-weight: 800; color: #fff; margin-bottom: 0.5rem;">
+            Your score has been submitted, thank you!
+          </h2>
+          <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 1.5rem;">
+            Your 15-minute Git & GitHub sprint challenge is officially completed. Your final score and verified missions have been submitted to the arena database.
           </p>
 
-          <div style="background: var(--bg-tertiary); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 1rem; margin-bottom: 1.25rem; display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem;">
+          <div style="background: var(--bg-tertiary); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 1.25rem; margin-bottom: 1.5rem; display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
             <div>
-              <div style="font-size: 0.75rem; color: var(--text-dim);">Verified Score</div>
-              <div id="time-up-xp" style="font-size: 1.4rem; font-weight: 800; color: var(--accent-cyan); font-family: var(--font-mono);">0 XP</div>
+              <div style="font-size: 0.75rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.25rem;">Final Verified Score</div>
+              <div id="time-up-xp" style="font-size: 1.6rem; font-weight: 800; color: var(--accent-cyan); font-family: var(--font-mono);">0 XP</div>
             </div>
             <div>
-              <div style="font-size: 0.75rem; color: var(--text-dim);">Missions Completed</div>
-              <div id="time-up-missions" style="font-size: 1.4rem; font-weight: 800; color: var(--accent-green);">0 / 8</div>
+              <div style="font-size: 0.75rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.25rem;">Missions Completed</div>
+              <div id="time-up-missions" style="font-size: 1.6rem; font-weight: 800; color: var(--accent-green); font-family: var(--font-mono);">0 / 8</div>
             </div>
           </div>
 
-          <p style="font-size: 0.8rem; color: var(--text-dim); margin-bottom: 0;">
-            You can continue exploring your files and commits, or restart the 15-minute sprint.
-          </p>
+          <div style="background: rgba(63, 185, 80, 0.12); border: 1px solid rgba(63, 185, 80, 0.4); border-radius: var(--radius-sm); padding: 0.85rem; color: var(--accent-green); font-size: 0.85rem; font-weight: 600; line-height: 1.5;">
+            ✓ Score successfully recorded & locked.<br />
+            <span style="color: var(--text-muted); font-size: 0.75rem;">Re-entry with this participant ID is closed. Great effort!</span>
+          </div>
         </div>
-        <div class="modal-footer" style="display: flex; justify-content: center; gap: 0.5rem;">
-          <button class="btn btn-primary modal-close-btn">Review My Code</button>
-          <button class="btn btn-cyan" onclick="restartSprintTimer()">🔄 Restart 15-Min Timer</button>
+        <div class="modal-footer" style="display: flex; justify-content: center; padding: 1.1rem; border-top: 1px solid var(--border-color);">
+          <span style="color: var(--text-dim); font-size: 0.8rem;">You may now safely close this browser tab.</span>
         </div>
       </div>
     </div>

@@ -78,6 +78,18 @@ function initApp() {
     showDisqualifiedScreen(localStorage.getItem('open_sourcery_disqualified_reason') || 'Focus violation during sprint');
   }
 
+  // If user has already submitted / completed assessment, enforce the submission screen immediately!
+  const curEmail = localStorage.getItem('open_sourcery_user_email');
+  if (curEmail && !isAdmin) {
+    const isSubmitted = localStorage.getItem(`open_sourcery_submitted_${curEmail.toLowerCase()}`) === 'true';
+    if (isSubmitted) {
+      if (overlay) overlay.style.display = 'none';
+      setTimeout(() => {
+        showTimeUpSummary();
+      }, 300);
+    }
+  }
+
   currentContributor = SessionStore.getActiveContributor();
   loadActiveRepository();
   renderAll();
@@ -172,6 +184,32 @@ function submitOnboardingRegistration(e) {
 
   if (!name || !email) {
     showToast('Please enter both your Name and Email to continue.', 'error');
+    return;
+  }
+
+  // Constrain email domain strictly to @bmu.edu.in
+  const cleanEmail = email.toLowerCase().trim();
+  if (!cleanEmail.endsWith('@bmu.edu.in')) {
+    showToast('Invalid Email ID! You must enter an official @bmu.edu.in college email address.', 'error');
+    if (emailInput) {
+      emailInput.style.borderColor = 'var(--accent-red)';
+      emailInput.focus();
+    }
+    return;
+  }
+
+  // Prevent re-login if participant has already finished/submitted their assessment
+  const existingPart = SessionStore.getParticipantByEmail('session-demo', cleanEmail);
+  const isAlreadySubmitted =
+    localStorage.getItem(`open_sourcery_submitted_${cleanEmail}`) === 'true' ||
+    Boolean(existingPart && (existingPart.hasSubmitted || existingPart.isFinished));
+
+  if (isAlreadySubmitted) {
+    showToast('Your assessment score has already been submitted! Re-entry with this ID is not permitted. Thank you!', 'error');
+    currentContributor = (existingPart && existingPart.name) || name;
+    const overlay = document.getElementById('onboarding-overlay');
+    if (overlay) overlay.style.display = 'none';
+    showTimeUpSummary();
     return;
   }
 
@@ -1979,7 +2017,16 @@ function renderMissionsDrawer() {
         </div>
       </div>
     `;
-  }).join('');
+  }).join('') + `
+    <div style="margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid var(--border-color);">
+      <button class="btn btn-primary" onclick="confirmEarlySubmit()" style="width: 100%; justify-content: center; padding: 0.8rem 1rem; font-weight: 700; font-size: 0.9rem;">
+        🏁 Finish & Submit Assessment Score
+      </button>
+      <div style="text-align: center; color: var(--text-dim); font-size: 0.72rem; margin-top: 0.4rem;">
+        Click to finalize and submit your assessment score now.
+      </div>
+    </div>
+  `;
 }
 
 function toggleHint(hintId) {
@@ -3186,11 +3233,12 @@ function startTimer() {
     }
 
     if (remaining <= 0) {
-      timerEl.textContent = '00:00 (Time Up!)';
-      timerEl.style.color = 'var(--accent-red)';
+      timerEl.textContent = '00:00 (Submitted)';
+      timerEl.style.color = 'var(--accent-cyan)';
+      if (timerInterval) clearInterval(timerInterval);
       if (!hasAlertedTimeUp) {
         hasAlertedTimeUp = true;
-        showTimeUpSummary();
+        markAssessmentSubmitted();
       }
     } else {
       const mins = Math.floor(remaining / 60000);
@@ -3208,11 +3256,48 @@ function startTimer() {
   timerInterval = setInterval(updateCountdown, 1000);
 }
 
+function markAssessmentSubmitted() {
+  const curEmail = (localStorage.getItem('open_sourcery_user_email') || '').toLowerCase().trim();
+  if (curEmail) {
+    localStorage.setItem(`open_sourcery_submitted_${curEmail}`, 'true');
+  }
+
+  let curPart = SessionStore.getCurrentParticipant('session-demo');
+  if (!curPart && curEmail) {
+    curPart = SessionStore.getParticipantByEmail('session-demo', curEmail);
+  }
+
+  if (curPart) {
+    curPart.hasSubmitted = true;
+    curPart.isFinished = true;
+    curPart.timerRemainingMs = 0;
+    curPart.submittedAt = Date.now();
+    localStorage.setItem(`open_sourcery_participant_session-demo_${curPart.id}`, JSON.stringify(curPart));
+    localStorage.setItem(`open_sourcery_submitted_${curPart.id}`, 'true');
+    if (typeof window.syncParticipantToCloud === 'function') {
+      window.syncParticipantToCloud('session-demo', curPart);
+    }
+  }
+
+  const timerEl = document.getElementById('session-countdown');
+  if (timerEl) {
+    timerEl.textContent = '00:00 (Submitted)';
+    timerEl.style.color = 'var(--accent-cyan)';
+  }
+  if (timerInterval) clearInterval(timerInterval);
+
+  showTimeUpSummary();
+}
+
 function showTimeUpSummary() {
-  const contributors = SessionStore.getAllContributors();
-  const cur = contributors.find(c => c.name === currentContributor) || { xp: 0 };
-  const totalXP = cur.xp || 0;
-  const completedMissions = Math.min(8, Math.floor(totalXP / 70));
+  const curEmail = (localStorage.getItem('open_sourcery_user_email') || '').toLowerCase().trim();
+  let curPart = SessionStore.getCurrentParticipant('session-demo');
+  if (!curPart && curEmail) {
+    curPart = SessionStore.getParticipantByEmail('session-demo', curEmail);
+  }
+
+  const totalXP = curPart ? (curPart.verifiedXP || 0) : 0;
+  const completedMissions = curPart ? (curPart.completedMissions || []).length : 0;
 
   const xpEl = document.getElementById('time-up-xp');
   const countEl = document.getElementById('time-up-missions');
@@ -3220,16 +3305,21 @@ function showTimeUpSummary() {
   if (countEl) countEl.textContent = `${completedMissions} / 8`;
 
   openModal('time-up-modal');
-  triggerConfetti(40);
-  showToast('⏰ 15-Minute Sprint Finished! Great job!', 'info');
+  triggerConfetti(65);
+  showToast('🏁 Assessment Finished! Your score has been submitted, thank you!', 'success');
 }
 
-function restartSprintTimer() {
-  localStorage.setItem('open_sourcery_timer_start', Date.now().toString());
-  hasAlertedTimeUp = false;
-  closeModal('time-up-modal');
-  startTimer();
-  showToast('🔄 15-Minute sprint timer restarted! Ready, set, go!', 'success');
+function confirmEarlySubmit() {
+  openConfirmModal({
+    title: 'Submit Final Assessment Score?',
+    message: 'Are you sure you want to finalize and submit your assessment score now? Once submitted, your score will be locked in the database and re-entry is not permitted.',
+    confirmText: 'Yes, Submit My Score',
+    confirmClass: 'btn-primary',
+    icon: '🏁',
+    onConfirm: () => {
+      markAssessmentSubmitted();
+    }
+  });
 }
 
 function openOnboardingModal() {
@@ -3245,104 +3335,10 @@ function closeOnboardingModal() {
   if (overlay) overlay.style.display = 'none';
 }
 
-// --- Participant Logout ---
+// --- Participant Logout (Disabled During Sprint) ---
 
 function logoutParticipant() {
-  showConfirmDialog({
-    title: 'Participant Logout',
-    message: 'Are you sure you want to log out? Your score is saved and your sprint timer will pause so you can resume whenever you log back in.',
-    confirmText: 'Yes, Log Out & Pause Timer',
-    confirmClass: 'btn-warning',
-    icon: '🚪',
-    onConfirm: () => {
-      // Exit full-screen if active
-      if (document.fullscreenElement || document.webkitFullscreenElement) {
-        try {
-          if (document.exitFullscreen) document.exitFullscreen().catch(() => {});
-          else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
-        } catch {}
-      }
-
-      // 1. Calculate remaining timer duration
-      const totalMs = 15 * 60 * 1000;
-      const startTime = parseInt(localStorage.getItem('open_sourcery_timer_start'), 10);
-      let remainingMs = totalMs;
-
-      if (startTime && !isNaN(startTime)) {
-        const elapsed = Date.now() - startTime;
-        remainingMs = Math.max(0, totalMs - elapsed);
-      }
-
-      // Pause and clear running interval
-      if (timerInterval) {
-        clearInterval(timerInterval);
-        timerInterval = null;
-      }
-
-      const activeEmail = (localStorage.getItem('open_sourcery_user_email') || '').trim().toLowerCase();
-      let curPart = SessionStore.getCurrentParticipant('session-demo');
-      if (!curPart && activeEmail) {
-        curPart = SessionStore.getParticipantByEmail('session-demo', activeEmail);
-      }
-      if (!curPart && currentContributor) {
-        curPart = SessionStore.getParticipantByName('session-demo', currentContributor);
-      }
-
-      // 2. Safely store remaining time on participant record and sync to cloud
-      if (curPart) {
-        curPart.timerRemainingMs = remainingMs;
-        curPart.isOnline = false;
-        curPart.lastActiveAt = Date.now();
-        localStorage.setItem(
-          `open_sourcery_participant_session-demo_${curPart.id}`,
-          JSON.stringify(curPart)
-        );
-        if (typeof window !== 'undefined' && typeof window.syncParticipantToCloud === 'function') {
-          window.syncParticipantToCloud('session-demo', curPart);
-        }
-      }
-
-      // 3. Store remaining time indexed by user ID/email so re-login resumes immediately
-      if (activeEmail) {
-        localStorage.setItem(`open_sourcery_timer_remaining_${activeEmail.toLowerCase()}`, remainingMs.toString());
-      }
-      if (currentContributor) {
-        localStorage.setItem(`open_sourcery_timer_remaining_${currentContributor.toLowerCase()}`, remainingMs.toString());
-      }
-      localStorage.setItem('open_sourcery_timer_remaining_last', remainingMs.toString());
-
-      // 4. Mark session logged out locally
-      localStorage.removeItem('open_sourcery_user_registered');
-      localStorage.removeItem('open_sourcery_timer_start');
-      localStorage.removeItem('open_sourcery_tab_switch_count');
-      localStorage.removeItem('open_sourcery_user_email');
-
-      // Close any open modals
-      document.querySelectorAll('.modal-backdrop').forEach(m => m.classList.remove('open'));
-
-      // Format paused countdown timer display
-      const timerEl = document.getElementById('session-countdown');
-      if (timerEl) {
-        const mins = Math.floor(remainingMs / 60000);
-        const secs = Math.floor((remainingMs % 60000) / 1000);
-        timerEl.textContent = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')} (Paused)`;
-        timerEl.style.color = 'var(--accent-orange)';
-      }
-
-      // Display onboarding overlay
-      const overlay = document.getElementById('onboarding-overlay');
-      if (overlay) {
-        overlay.style.display = 'flex';
-        const nameInput = document.getElementById('onboarding-name-input');
-        const emailInput = document.getElementById('onboarding-email-input');
-        if (nameInput) nameInput.value = '';
-        if (emailInput) emailInput.value = '';
-      }
-
-      const minsLeft = Math.ceil(remainingMs / 60000);
-      showToast(`Logged out. Your score and ${minsLeft}m remaining time are safely paused!`, 'info');
-    }
-  });
+  showToast('Assessment in progress! Logging out is disabled until you finish or submit your score.', 'warning');
 }
 
 // --- Fullscreen & Tab-Switch Protection Guards (Instant Disqualification) ---
