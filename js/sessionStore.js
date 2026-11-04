@@ -259,35 +259,50 @@ class SessionStore {
   }
 
   static getAllContributors() {
-    const active = this.getActiveContributor();
-    const defaultContributors = [
-      { name: active, rollNumber: '', github: '', xp: 0, isOnline: true }
-    ];
-
     const custom = [];
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i);
       if (key && key.startsWith(`${STORAGE_PREFIX}custom_contributor_`)) {
         try {
-          custom.push(JSON.parse(localStorage.getItem(key)));
+          const item = JSON.parse(localStorage.getItem(key));
+          if (item && item.name) custom.push(item);
         } catch {}
       }
     }
 
-    return [...defaultContributors, ...custom];
+    const active = this.getActiveContributor();
+    if (!custom.some(c => c.name.toLowerCase() === active.toLowerCase())) {
+      custom.unshift({ name: active, rollNumber: '', github: '', xp: 0, isOnline: true });
+    }
+
+    return custom;
   }
 
-  static addCustomContributor(name, rollNumber = '', github = '', email = '') {
+  static addCustomContributor(name, rollNumber = '', github = '', email = '', initialXP = 0) {
+    const trimmedName = name.trim();
+    let currentXP = initialXP;
+
+    // Preserve existing XP if participant already has accumulated score
+    const existingRaw = localStorage.getItem(`${STORAGE_PREFIX}custom_contributor_${trimmedName}`);
+    if (existingRaw) {
+      try {
+        const parsed = JSON.parse(existingRaw);
+        if (typeof parsed.xp === 'number') {
+          currentXP = Math.max(parsed.xp, initialXP);
+        }
+      } catch {}
+    }
+
     const profile = {
-      name: name.trim(),
+      name: trimmedName,
       email: email ? email.trim() : '',
-      rollNumber: rollNumber.trim().toUpperCase(),
-      github: github.trim(),
-      xp: 0,
+      rollNumber: rollNumber ? rollNumber.trim().toUpperCase() : '',
+      github: github ? github.trim() : '',
+      xp: currentXP,
       isOnline: true
     };
-    localStorage.setItem(`${STORAGE_PREFIX}custom_contributor_${name.trim()}`, JSON.stringify(profile));
-    this.setActiveContributor(name.trim());
+    localStorage.setItem(`${STORAGE_PREFIX}custom_contributor_${trimmedName}`, JSON.stringify(profile));
+    this.setActiveContributor(trimmedName);
     return profile;
   }
 
@@ -305,6 +320,13 @@ class SessionStore {
     }
     const activeName = this.getActiveContributor();
     return this.getParticipantByName(sessionId, activeName);
+  }
+
+  static getParticipantByEmail(sessionId = 'session-demo', email = '') {
+    if (!email) return null;
+    const target = email.trim().toLowerCase();
+    const all = this.getAllParticipants(sessionId);
+    return all.find(p => (p.email || '').trim().toLowerCase() === target) || null;
   }
 
   static getParticipantByName(sessionId = 'session-demo', name = '') {
@@ -333,46 +355,102 @@ class SessionStore {
     const session = this.getSession(sessionId);
     if (!session) return { success: false, message: 'Session does not exist.' };
 
-    const participantId = `part_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-    const newParticipant = {
-      id: participantId,
-      sessionId,
-      name: name.trim(),
-      email: email ? email.trim() : '',
-      rollNumber: rollNumber.trim().toUpperCase(),
-      githubUsername: githubUsername ? githubUsername.trim() : '',
-      registeredAt: Date.now(),
-      lastActiveAt: Date.now(),
-      isOnline: true,
-      currentMissionIndex: 0,
-      completedMissions: [],
-      verifiedXP: 0,
-      focusViolations: 0
-    };
+    const trimmedName = name.trim();
+    const trimmedEmail = email ? email.trim() : '';
+    const trimmedRoll = rollNumber ? rollNumber.trim().toUpperCase() : '';
+    const trimmedGithub = githubUsername ? githubUsername.trim() : '';
+
+    // Check if participant already exists by email, rollNumber, or name (to preserve score upon re-login)
+    let existingParticipant = null;
+    if (trimmedEmail) {
+      existingParticipant = this.getParticipantByEmail(sessionId, trimmedEmail);
+    }
+    if (!existingParticipant && trimmedRoll) {
+      const all = this.getAllParticipants(sessionId);
+      existingParticipant = all.find(p => (p.rollNumber || '').toUpperCase() === trimmedRoll) || null;
+    }
+    if (!existingParticipant && trimmedName) {
+      existingParticipant = this.getParticipantByName(sessionId, trimmedName);
+    }
+
+    let participant;
+    let isReLogin = false;
+
+    if (existingParticipant) {
+      // Re-login with same ID: PRESERVE score, XP, missions, and timer
+      isReLogin = true;
+      participant = existingParticipant;
+      if (trimmedName) participant.name = trimmedName;
+      if (trimmedEmail && !participant.email) participant.email = trimmedEmail;
+      if (trimmedRoll && !participant.rollNumber) participant.rollNumber = trimmedRoll;
+      if (trimmedGithub && !participant.githubUsername) participant.githubUsername = trimmedGithub;
+      participant.lastActiveAt = Date.now();
+      participant.isOnline = true;
+    } else {
+      // First-time registration
+      const participantId = `part_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+      participant = {
+        id: participantId,
+        sessionId,
+        name: trimmedName,
+        email: trimmedEmail,
+        rollNumber: trimmedRoll,
+        githubUsername: trimmedGithub,
+        registeredAt: Date.now(),
+        lastActiveAt: Date.now(),
+        isOnline: true,
+        currentMissionIndex: 0,
+        completedMissions: [],
+        verifiedXP: 0,
+        focusViolations: 0,
+        timerRemainingMs: 15 * 60 * 1000
+      };
+    }
 
     localStorage.setItem(
-      `${STORAGE_PREFIX}participant_${sessionId}_${participantId}`,
-      JSON.stringify(newParticipant)
+      `${STORAGE_PREFIX}participant_${sessionId}_${participant.id}`,
+      JSON.stringify(participant)
     );
-    localStorage.setItem(`${STORAGE_PREFIX}current_participant_id`, participantId);
+    localStorage.setItem(`${STORAGE_PREFIX}current_participant_id`, participant.id);
 
-    this.addCustomContributor(name, rollNumber, githubUsername, email);
-    this.setActiveContributor(name);
+    // Sync or update custom contributor while keeping accumulated XP intact
+    this.addCustomContributor(
+      participant.name,
+      participant.rollNumber || trimmedRoll,
+      participant.githubUsername || trimmedGithub,
+      participant.email || trimmedEmail,
+      participant.verifiedXP || 0
+    );
+    this.setActiveContributor(participant.name);
 
-    this.recordActivity(this.getActiveRepoId(), name.trim(), 'session', `Registered for workshop challenge`);
-    this.broadcast({ type: 'PARTICIPANT_REGISTERED', participant: newParticipant });
+    this.recordActivity(
+      this.getActiveRepoId(),
+      participant.name,
+      'session',
+      isReLogin
+        ? `Re-entered workshop sprint with ${participant.verifiedXP || 0} XP`
+        : `Registered for workshop challenge`
+    );
+    this.broadcast({ type: 'PARTICIPANT_REGISTERED', participant, isReLogin });
 
     // Sync participant and updated leaderboard to Firebase Cloud Database
     if (typeof window !== 'undefined') {
       if (typeof window.syncParticipantToCloud === 'function') {
-        window.syncParticipantToCloud(sessionId, newParticipant);
+        window.syncParticipantToCloud(sessionId, participant);
       }
       if (typeof window.syncLeaderboardToCloud === 'function') {
         window.syncLeaderboardToCloud(sessionId, this.getLeaderboard(sessionId));
       }
     }
 
-    return { success: true, participant: newParticipant, message: 'Welcome to Open Sourcery Arena!' };
+    return {
+      success: true,
+      participant,
+      isReLogin,
+      message: isReLogin
+        ? `Welcome back, ${participant.name}! Your ${participant.verifiedXP || 0} XP score and progress have been restored.`
+        : 'Welcome to Open Sourcery Arena!'
+    };
   }
 
   static getParticipant(sessionId, participantId) {

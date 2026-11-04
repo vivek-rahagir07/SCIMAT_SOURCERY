@@ -172,14 +172,33 @@ function submitOnboardingRegistration(e) {
     return;
   }
 
-  // Register participant in session
-  SessionStore.registerParticipant('session-demo', name, email, roll, github);
+  // Register or re-login participant in session (preserves existing XP and score)
+  const regResult = SessionStore.registerParticipant('session-demo', name, email, roll, github);
+  const part = regResult.participant;
   currentContributor = name;
 
-  // Mark registered and initialize 15-minute challenge timer
+  // Mark registered
   localStorage.setItem('open_sourcery_user_registered', 'true');
   localStorage.setItem('open_sourcery_user_email', email);
-  localStorage.setItem('open_sourcery_timer_start', Date.now().toString());
+
+  // Resume or start 15-minute challenge timer
+  const totalMs = 15 * 60 * 1000;
+  let remainingMs = totalMs;
+
+  if (part && typeof part.timerRemainingMs === 'number') {
+    remainingMs = Math.max(0, part.timerRemainingMs);
+  } else {
+    const savedRemaining = localStorage.getItem(`open_sourcery_timer_remaining_${email.toLowerCase()}`) ||
+                           localStorage.getItem(`open_sourcery_timer_remaining_${name.toLowerCase()}`) ||
+                           localStorage.getItem('open_sourcery_timer_remaining_last');
+    if (savedRemaining && !isNaN(parseInt(savedRemaining, 10))) {
+      remainingMs = Math.max(0, parseInt(savedRemaining, 10));
+    }
+  }
+
+  // Re-calculate startTime so countdown resumes seamlessly with preserved remaining duration
+  const resumedStartTime = Date.now() - (totalMs - remainingMs);
+  localStorage.setItem('open_sourcery_timer_start', resumedStartTime.toString());
 
   // Hide onboarding screen smoothly
   const overlay = document.getElementById('onboarding-overlay');
@@ -192,7 +211,17 @@ function submitOnboardingRegistration(e) {
   requestAppFullscreen();
 
   triggerConfetti(60);
-  showToast(`Welcome, ${name}! Your 15-minute challenge timer has started in full-screen. Good luck!`, 'success');
+
+  const mins = Math.floor(remainingMs / 60000);
+  const secs = Math.floor((remainingMs % 60000) / 1000);
+  const timeFormatted = `${mins}:${secs.toString().padStart(2, '0')}`;
+
+  if (regResult.isReLogin) {
+    showToast(`Welcome back, ${name}! Restored ${part.verifiedXP || 0} XP with ${timeFormatted} remaining on timer.`, 'success');
+  } else {
+    showToast(`Welcome, ${name}! Your 15-minute challenge timer has started in full-screen. Good luck!`, 'success');
+  }
+
   startTimer();
 }
 
@@ -2911,6 +2940,15 @@ function startTimer() {
     const elapsed = Date.now() - startTime;
     const remaining = totalMs - elapsed;
 
+    // Continuously checkpoint remaining time every 5 seconds
+    if (Math.floor(elapsed / 1000) % 5 === 0) {
+      const curPart = SessionStore.getCurrentParticipant('session-demo');
+      if (curPart) {
+        curPart.timerRemainingMs = Math.max(0, remaining);
+        localStorage.setItem(`open_sourcery_participant_session-demo_${curPart.id}`, JSON.stringify(curPart));
+      }
+    }
+
     if (remaining <= 0) {
       timerEl.textContent = '00:00 (Time Up!)';
       timerEl.style.color = 'var(--accent-red)';
@@ -2976,8 +3014,8 @@ function closeOnboardingModal() {
 function logoutParticipant() {
   showConfirmDialog({
     title: 'Participant Logout',
-    message: 'Are you sure you want to log out? Your sprint session will be cleared for the next participant.',
-    confirmText: 'Yes, Log Out',
+    message: 'Are you sure you want to log out? Your score is saved and your sprint timer will pause so you can resume whenever you log back in.',
+    confirmText: 'Yes, Log Out & Pause Timer',
     confirmClass: 'btn-warning',
     icon: '🚪',
     onConfirm: () => {
@@ -2989,6 +3027,49 @@ function logoutParticipant() {
         } catch {}
       }
 
+      // 1. Calculate remaining timer duration
+      const totalMs = 15 * 60 * 1000;
+      const startTime = parseInt(localStorage.getItem('open_sourcery_timer_start'), 10);
+      let remainingMs = totalMs;
+
+      if (startTime && !isNaN(startTime)) {
+        const elapsed = Date.now() - startTime;
+        remainingMs = Math.max(0, totalMs - elapsed);
+      }
+
+      // Pause and clear running interval
+      if (timerInterval) {
+        clearInterval(timerInterval);
+        timerInterval = null;
+      }
+
+      const activeEmail = localStorage.getItem('open_sourcery_user_email') || '';
+      const curPart = SessionStore.getCurrentParticipant('session-demo');
+
+      // 2. Safely store remaining time on participant record and sync to cloud
+      if (curPart) {
+        curPart.timerRemainingMs = remainingMs;
+        curPart.isOnline = false;
+        curPart.lastActiveAt = Date.now();
+        localStorage.setItem(
+          `open_sourcery_participant_session-demo_${curPart.id}`,
+          JSON.stringify(curPart)
+        );
+        if (typeof window !== 'undefined' && typeof window.syncParticipantToCloud === 'function') {
+          window.syncParticipantToCloud('session-demo', curPart);
+        }
+      }
+
+      // 3. Store remaining time indexed by user ID/email so re-login resumes immediately
+      if (activeEmail) {
+        localStorage.setItem(`open_sourcery_timer_remaining_${activeEmail.toLowerCase()}`, remainingMs.toString());
+      }
+      if (currentContributor) {
+        localStorage.setItem(`open_sourcery_timer_remaining_${currentContributor.toLowerCase()}`, remainingMs.toString());
+      }
+      localStorage.setItem('open_sourcery_timer_remaining_last', remainingMs.toString());
+
+      // 4. Mark session logged out locally
       localStorage.removeItem('open_sourcery_user_registered');
       localStorage.removeItem('open_sourcery_timer_start');
       localStorage.removeItem('open_sourcery_tab_switch_count');
@@ -2997,11 +3078,13 @@ function logoutParticipant() {
       // Close any open modals
       document.querySelectorAll('.modal-backdrop').forEach(m => m.classList.remove('open'));
 
-      // Reset countdown timer
+      // Format paused countdown timer display
       const timerEl = document.getElementById('session-countdown');
       if (timerEl) {
-        timerEl.textContent = '15:00';
-        timerEl.style.color = '';
+        const mins = Math.floor(remainingMs / 60000);
+        const secs = Math.floor((remainingMs % 60000) / 1000);
+        timerEl.textContent = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')} (Paused)`;
+        timerEl.style.color = 'var(--accent-orange)';
       }
 
       // Display onboarding overlay
@@ -3014,7 +3097,8 @@ function logoutParticipant() {
         if (emailInput) emailInput.value = '';
       }
 
-      showToast('Logged out successfully. Welcome next participant!', 'info');
+      const minsLeft = Math.ceil(remainingMs / 60000);
+      showToast(`Logged out. Your score and ${minsLeft}m remaining time are safely paused!`, 'info');
     }
   });
 }
