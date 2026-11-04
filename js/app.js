@@ -1879,6 +1879,79 @@ function toggleHint(hintId) {
   if (el) el.classList.toggle('open');
 }
 
+const MISSION_BADGES = {
+  'mission-1': { name: 'Repo Explorer', icon: '🧭', title: 'Codebase Scout' },
+  'mission-2': { name: 'Bug Hunter', icon: '🐛', title: 'Issue Tracker' },
+  'mission-3': { name: 'Branch Architect', icon: '🌿', title: 'Branch Specialist' },
+  'mission-4': { name: 'Code Artisan', icon: '💾', title: 'Atomic Committer' },
+  'mission-5': { name: 'Cloud Pioneer', icon: '🚀', title: 'Remote Publisher' },
+  'mission-6': { name: 'PR Strategist', icon: '🔀', title: 'Pull Request Pro' },
+  'mission-7': { name: 'Merge Master', icon: '🟣', title: 'Code Reviewer' },
+  'mission-8': { name: 'Conflict Slayer', icon: '⚔️', title: 'Git Champion' }
+};
+
+function spawnFloatingXpBadge(text) {
+  if (typeof document === 'undefined') return;
+  const pill = document.createElement('div');
+  pill.className = 'floating-xp-pill';
+  pill.textContent = text;
+
+  const navUserXp = document.getElementById('nav-user-xp');
+  if (navUserXp) {
+    const rect = navUserXp.getBoundingClientRect();
+    pill.style.left = `${rect.left}px`;
+    pill.style.top = `${rect.top - 10}px`;
+  } else {
+    pill.style.left = '50%';
+    pill.style.top = '15%';
+    pill.style.transform = 'translateX(-50%)';
+  }
+
+  document.body.appendChild(pill);
+  setTimeout(() => pill.remove(), 1600);
+}
+
+function triggerBadgeUnlockCelebration(missionId, xpAwarded, totalXP) {
+  const badge = MISSION_BADGES[missionId] || { name: 'Git Challenger', icon: '⭐', title: 'Skill Master' };
+  const mission = DEFAULT_MISSIONS.find(m => m.id === missionId);
+
+  // 1. Confetti burst
+  triggerConfetti(85);
+
+  // 2. Floating XP pill
+  spawnFloatingXpBadge(`+${xpAwarded} XP`);
+
+  // 3. Glowing badge banner popup
+  if (typeof document !== 'undefined' && document.body) {
+    const banner = document.createElement('div');
+    banner.className = 'badge-unlock-banner';
+    banner.innerHTML = `
+      <div class="badge-icon-box">${badge.icon}</div>
+      <div class="badge-unlock-info">
+        <div class="badge-unlock-header">
+          <span>🏆</span>
+          <span>ACHIEVEMENT UNLOCKED • MISSION ${mission ? mission.number : ''}</span>
+        </div>
+        <div class="badge-unlock-title">${escapeHtml(badge.name)}</div>
+        <div class="badge-unlock-sub">+${xpAwarded} XP Awarded! • Total: ${totalXP} XP</div>
+      </div>
+    `;
+    document.body.appendChild(banner);
+
+    setTimeout(() => banner.classList.add('show'), 40);
+
+    setTimeout(() => {
+      banner.classList.remove('show');
+      setTimeout(() => {
+        banner.remove();
+        showMissionQuizModal(missionId);
+      }, 400);
+    }, 3200);
+  } else {
+    showMissionQuizModal(missionId);
+  }
+}
+
 function manualVerifyMission(missionId) {
   if (!git) return;
   const state = git.getState();
@@ -1898,8 +1971,7 @@ function manualVerifyMission(missionId) {
 
     if (awardRes.xpAwarded > 0) {
       showToast(awardRes.message, 'success');
-      triggerConfetti(75);
-      showMissionQuizModal(missionId);
+      triggerBadgeUnlockCelebration(missionId, awardRes.xpAwarded, awardRes.totalXP);
     } else {
       showToast(`Mission already verified and awarded! Score: ${awardRes.totalXP} XP`, 'info');
       showMissionQuizModal(missionId);
@@ -1917,6 +1989,8 @@ function checkAllMissions() {
 
   let anyNewAward = false;
   let newlyAwardedMissionId = null;
+  let newlyAwardedXP = 0;
+  let newlyTotalXP = 0;
 
   for (const m of DEFAULT_MISSIONS) {
     const res = MissionValidator.validateMission(m.id, state, interactionHistory);
@@ -1927,9 +2001,10 @@ function checkAllMissions() {
       if (awardRes.xpAwarded > 0) {
         anyNewAward = true;
         newlyAwardedMissionId = m.id;
+        newlyAwardedXP = awardRes.xpAwarded;
+        newlyTotalXP = awardRes.totalXP;
         if (card) card.classList.add('completed');
         showToast(awardRes.message, 'success');
-        triggerConfetti(70);
       } else if (card && !card.classList.contains('completed')) {
         card.classList.add('completed');
       }
@@ -1941,7 +2016,7 @@ function checkAllMissions() {
     renderMissionsDrawer();
     updateLeaderboardUI();
     if (newlyAwardedMissionId) {
-      showMissionQuizModal(newlyAwardedMissionId);
+      triggerBadgeUnlockCelebration(newlyAwardedMissionId, newlyAwardedXP, newlyTotalXP);
     }
   }
 }
@@ -1953,23 +2028,23 @@ const MISSION_QUIZZES = {
     {
       question: "Which terminal command prints the complete contents of 'README.md' directly to the screen?",
       options: [
+        "read README.md",
         "cat README.md",
         "git open README.md",
-        "read README.md",
         "git show-text README.md"
       ],
-      correctIndex: 0,
+      correctIndex: 1,
       explanation: "'cat README.md' is the standard Unix command to output file contents directly in terminal shells."
     },
     {
       question: "Which Git command displays the configured remote repository fetch and push URLs?",
       options: [
-        "git remote -v",
         "git url --show",
-        "git network",
-        "git origin list"
+        "git origin list",
+        "git remote -v",
+        "git network"
       ],
-      correctIndex: 0,
+      correctIndex: 2,
       explanation: "'git remote -v' outputs the names and URLs of all configured remotes."
     }
   ],
@@ -1988,12 +2063,12 @@ const MISSION_QUIZZES = {
     {
       question: "How do you view all currently open issues in the repository using the terminal?",
       options: [
-        "gh issue list",
         "git issue status",
         "gh issues show",
-        "git list-issues"
+        "git list-issues",
+        "gh issue list"
       ],
-      correctIndex: 0,
+      correctIndex: 3,
       explanation: "'gh issue list' fetches and displays open issues for the repository in a clean table."
     }
   ],
@@ -2001,23 +2076,23 @@ const MISSION_QUIZZES = {
     {
       question: "Which command creates a new branch named 'feature/nav' AND switches to it in one single command?",
       options: [
-        "git checkout -b feature/nav",
         "git branch --switch feature/nav",
         "git branch -new feature/nav",
+        "git checkout -b feature/nav",
         "git create feature/nav"
       ],
-      correctIndex: 0,
+      correctIndex: 2,
       explanation: "'git checkout -b <name>' (or 'git switch -c <name>') creates the branch and checks it out immediately."
     },
     {
       question: "In modern Git (2.23+), which dedicated command switches your working tree to an existing branch?",
       options: [
+        "git move <branch-name>",
         "git switch <branch-name>",
         "git change <branch-name>",
-        "git move <branch-name>",
         "git goto <branch-name>"
       ],
-      correctIndex: 0,
+      correctIndex: 1,
       explanation: "'git switch' is Git's dedicated command specifically designed for switching branches."
     }
   ],
@@ -2025,23 +2100,23 @@ const MISSION_QUIZZES = {
     {
       question: "Which command stages all modified, newly added, and deleted files in the working directory?",
       options: [
-        "git add .",
         "git stage -all",
         "git push --stage",
-        "git commit --all-files"
+        "git commit --all-files",
+        "git add ."
       ],
-      correctIndex: 0,
+      correctIndex: 3,
       explanation: "'git add .' (or 'git add -A') stages all working tree changes into the Git index."
     },
     {
       question: "How do you specify a commit message directly on the command line without opening a text editor?",
       options: [
-        'git commit -m "your commit message"',
         'git commit -msg "your commit message"',
+        'git commit -m "your commit message"',
         'git commit --text "your commit message"',
         'git save "your commit message"'
       ],
-      correctIndex: 0,
+      correctIndex: 1,
       explanation: "The '-m' flag in 'git commit -m \"message\"' assigns the log message directly from the command line."
     }
   ],
@@ -2049,12 +2124,12 @@ const MISSION_QUIZZES = {
     {
       question: "What is the purpose of the '-u' (or '--set-upstream') flag in 'git push -u origin <branch>'?",
       options: [
-        "Links local branch to remote branch so subsequent 'git push' and 'git pull' require no arguments",
-        "Unstages any uncommitted files before uploading",
         "Forces an overwrite of remote changes",
+        "Unstages any uncommitted files before uploading",
+        "Links local branch to remote branch so subsequent 'git push' and 'git pull' require no arguments",
         "Upgrades the Git version installed on the remote origin"
       ],
-      correctIndex: 0,
+      correctIndex: 2,
       explanation: "'-u' establishes tracking between the local branch and upstream remote, enabling simple 'git push' and 'git pull'."
     },
     {
@@ -2073,12 +2148,12 @@ const MISSION_QUIZZES = {
     {
       question: "Which GitHub CLI command opens a pull request from your active feature branch into 'main'?",
       options: [
-        'gh pr create --title "Feature title" --body "Description"',
         'git pr open --to main',
+        'gh pr create --title "Feature title" --body "Description"',
         'gh pull --open',
         'git request-pull origin main'
       ],
-      correctIndex: 0,
+      correctIndex: 1,
       explanation: "'gh pr create' is the GitHub CLI command to submit a Pull Request to team members."
     },
     {
@@ -2097,23 +2172,23 @@ const MISSION_QUIZZES = {
     {
       question: "Which GitHub CLI command allows a reviewer to approve Pull Request #1 directly from the terminal?",
       options: [
-        "gh pr review 1 --approve",
         "git review approve 1",
         "gh pr merge 1 --yes",
-        "git approve pr 1"
+        "git approve pr 1",
+        "gh pr review 1 --approve"
       ],
-      correctIndex: 0,
+      correctIndex: 3,
       explanation: "'gh pr review <number> --approve' submits an approval review on the specified PR."
     },
     {
       question: "Which GitHub CLI command merges an approved Pull Request #1 into the base branch?",
       options: [
-        "gh pr merge 1",
         "git pull --merge 1",
+        "gh pr merge 1",
         "gh merge pr 1",
         "git pr finalize 1"
       ],
-      correctIndex: 0,
+      correctIndex: 1,
       explanation: "'gh pr merge <number>' completes the merge on GitHub and updates repository status."
     }
   ],
@@ -2132,12 +2207,12 @@ const MISSION_QUIZZES = {
     {
       question: "After manually editing the conflicting files and cleaning up markers, what completes the merge?",
       options: [
-        "Stage the files with 'git add .' and run 'git commit'",
         "Run 'git merge --cancel'",
         "Run 'git reset --hard'",
+        "Stage the files with 'git add .' and run 'git commit'",
         "Delete the branch and re-clone"
       ],
-      correctIndex: 0,
+      correctIndex: 2,
       explanation: "Resolving a conflict requires staging the resolved files with 'git add <file>' and running 'git commit' to record the merge commit."
     }
   ]
@@ -2522,14 +2597,18 @@ function openParticipantDossier(participantId, name) {
     <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 0.5rem; margin-bottom: 1.25rem;">
       ${DEFAULT_MISSIONS.map(m => {
         const done = completedMissions.includes(m.id);
+        const b = MISSION_BADGES[m.id] || { icon: '⭐', name: m.title };
         return `
-          <div style="background: var(--bg-primary); border: 1px solid ${done ? 'rgba(54, 228, 212, 0.5)' : 'var(--border-color)'}; border-radius: var(--radius-sm); padding: 0.5rem 0.65rem; font-size: 0.75rem;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.25rem;">
-              <strong style="color: ${done ? 'var(--accent-cyan)' : 'var(--text-muted)'};">M${m.number}: ${m.xp} XP</strong>
-              <span>${done ? '✅ Done' : '⏳ Pending'}</span>
-            </div>
-            <div style="color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${escapeHtml(m.title)}">
-              ${escapeHtml(m.title)}
+          <div style="background: ${done ? 'rgba(34, 197, 94, 0.1)' : 'var(--bg-primary)'}; border: 1px solid ${done ? 'var(--accent-green)' : 'var(--border-color)'}; border-radius: var(--radius-sm); padding: 0.5rem 0.65rem; font-size: 0.75rem; display: flex; align-items: center; gap: 0.5rem;">
+            <span style="font-size: 1.25rem;">${done ? b.icon : '🔒'}</span>
+            <div style="flex: 1; min-width: 0;">
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <strong style="color: ${done ? 'var(--accent-green)' : 'var(--text-muted)'}; font-size: 0.75rem;">${escapeHtml(b.name)}</strong>
+                <span style="font-size: 0.65rem; color: ${done ? 'var(--accent-green)' : 'var(--text-dim)'};">${done ? '✓ Unlocked' : `+${m.xp} XP`}</span>
+              </div>
+              <div style="color: var(--text-dim); font-size: 0.68rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${escapeHtml(m.title)}">
+                M${m.number}: ${escapeHtml(m.title)}
+              </div>
             </div>
           </div>
         `;

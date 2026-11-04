@@ -1941,3 +1941,114 @@ input:focus, textarea:focus, select:focus {
   border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
   line-height: 1.4;
 }
+
+/* --- Celebratory Badge Unlock & Floating XP --- */
+.badge-unlock-banner {
+  position: fixed;
+  top: 1.5rem;
+  left: 50%;
+  transform: translateX(-50%) translateY(-120%);
+  background: linear-gradient(135deg, rgba(15, 23, 42, 0.96), rgba(30, 41, 59, 0.98));
+  border: 2px solid #eab308;
+  box-shadow: 0 0 35px rgba(234, 179, 8, 0.4), 0 20px 40px rgba(0, 0, 0, 0.7);
+  border-radius: var(--radius-lg);
+  padding: 1rem 1.75rem;
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  z-index: 9999999;
+  pointer-events: auto;
+  opacity: 0;
+  transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.badge-unlock-banner.show {
+  transform: translateX(-50%) translateY(0);
+  opacity: 1;
+}
+
+.badge-icon-box {
+  width: 58px;
+  height: 58px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(234, 179, 8, 0.3) 0%, rgba(15, 23, 42, 0.8) 100%);
+  border: 2px solid #eab308;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2rem;
+  box-shadow: 0 0 15px rgba(234, 179, 8, 0.5);
+  animation: pulseBadge 1.8s infinite;
+}
+
+@keyframes pulseBadge {
+  0% { transform: scale(1); box-shadow: 0 0 15px rgba(234, 179, 8, 0.5); }
+  50% { transform: scale(1.08); box-shadow: 0 0 25px rgba(234, 179, 8, 0.8); }
+  100% { transform: scale(1); box-shadow: 0 0 15px rgba(234, 179, 8, 0.5); }
+}
+
+.badge-unlock-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.badge-unlock-header {
+  font-size: 0.72rem;
+  font-weight: 800;
+  color: #eab308;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.badge-unlock-title {
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: #fff;
+  margin: 0.15rem 0;
+}
+
+.badge-unlock-sub {
+  font-size: 0.82rem;
+  color: var(--accent-cyan);
+  font-family: var(--font-mono);
+  font-weight: 600;
+}
+
+/* Floating XP Popup */
+.floating-xp-pill {
+  position: fixed;
+  pointer-events: none;
+  font-size: 1rem;
+  font-weight: 800;
+  font-family: var(--font-mono);
+  color: #22c55e;
+  background: rgba(34, 197, 94, 0.15);
+  border: 1px solid #22c55e;
+  padding: 0.25rem 0.65rem;
+  border-radius: 999px;
+  box-shadow: 0 0 15px rgba(34, 197, 94, 0.4);
+  z-index: 9999999;
+  animation: floatUpFade 1.6s ease-out forwards;
+}
+
+@keyframes floatUpFade {
+  0% {
+    opacity: 0;
+    transform: translateY(10px) scale(0.85);
+  }
+  20% {
+    opacity: 1;
+    transform: translateY(0) scale(1.1);
+  }
+  80% {
+    opacity: 1;
+    transform: translateY(-35px) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-55px) scale(0.9);
+  }
+}
