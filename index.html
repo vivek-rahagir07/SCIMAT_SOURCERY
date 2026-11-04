@@ -11,87 +11,157 @@
   <body>
     <!-- Full-screen Onboarding Welcome / Registration Overlay -->
     <div id="onboarding-overlay" class="onboarding-overlay" style="display: none;">
-      <div class="onboarding-card">
-        <button type="button" class="onboarding-close-btn" id="onboarding-close-btn" onclick="closeOnboardingModal()" title="Close and return to Arena" style="display: none;">&times;</button>
-        <img src="assets/logo.jpg" alt="SCI-MAT Logo" class="onboarding-logo" />
-        <div class="onboarding-title">SCI-MAT <span>OPEN SOURCERY</span></div>
-        <div class="onboarding-sub">
-          Interactive Collaborative Git & GitHub Arena. Choose your portal below to enter.
-        </div>
+      <div class="onboarding-split-container">
 
-        <!-- Dual Mode Selector Tabs -->
-        <div class="onboarding-mode-tabs">
-          <button type="button" id="tab-btn-participant" class="onboarding-mode-btn active" onclick="switchOnboardingMode('participant')">
-            🎓 Participant Entry
-          </button>
-          <button type="button" id="tab-btn-admin" class="onboarding-mode-btn" onclick="switchOnboardingMode('admin')">
-            🛡️ Admin / Organizer Login
-          </button>
-        </div>
-
-        <!-- Participant Registration Panel -->
-        <div id="onboarding-participant-panel">
-          <div class="onboarding-badge-bar">
-            <span class="onboarding-badge">⏱️ 15 Minutes Sprint</span>
-            <span class="onboarding-badge">🎯 8 Hands-on Missions</span>
-            <span class="onboarding-badge">🏆 900 Max XP</span>
-          </div>
-
-          <form class="onboarding-form" onsubmit="submitOnboardingRegistration(event)">
-            <div class="onboarding-field">
-              <label for="onboarding-name-input">Your Full Name *</label>
-              <input type="text" id="onboarding-name-input" required placeholder="e.g. Vivek Yadav" autocomplete="name" />
+        <!-- LEFT SIDE: Registration / Login Card (From Image 1) -->
+        <div class="onboarding-split-left">
+          <div class="onboarding-card">
+            <button type="button" class="onboarding-close-btn" id="onboarding-close-btn" onclick="closeOnboardingModal()" title="Close and return to Arena" style="display: none;">&times;</button>
+            <div class="onboarding-logo-wrap">
+              <img src="assets/logo.jpg" alt="SCI-MAT Logo" class="onboarding-logo" />
+            </div>
+            <div class="onboarding-title">SCI-MAT <span>OPEN SOURCERY</span></div>
+            <div class="onboarding-sub">
+              Interactive Collaborative Git & GitHub Arena • Live Multiplayer Sprint
             </div>
 
-            <div class="onboarding-field">
-              <label for="onboarding-email-input">College Email ID *</label>
-              <input type="email" id="onboarding-email-input" required placeholder="e.g. vivek.yadav.25cse@bmu.edu.in" autocomplete="email" />
+            <!-- Dual Mode Selector Tabs -->
+            <div class="onboarding-mode-tabs">
+              <button type="button" id="tab-btn-participant" class="onboarding-mode-btn active" onclick="switchOnboardingMode('participant')">
+                🧑‍💻 Participant Entry
+              </button>
+              <button type="button" id="tab-btn-admin" class="onboarding-mode-btn" onclick="switchOnboardingMode('admin')">
+                🛡️ Admin / Organizer Login
+              </button>
             </div>
 
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem;">
-              <div class="onboarding-field">
-                <label for="onboarding-roll-input">Roll No. (Optional)</label>
-                <input type="text" id="onboarding-roll-input" placeholder="e.g. 25CSE042" />
+            <!-- Participant Registration Panel -->
+            <div id="onboarding-participant-panel">
+              <div class="onboarding-badge-bar">
+                <span class="onboarding-badge badge-sprint">⏱️ 15m Sprint</span>
+                <span class="onboarding-badge badge-missions">🎯 8 Missions</span>
+                <span class="onboarding-badge badge-xp">🏆 900 Max XP</span>
               </div>
-              <div class="onboarding-field">
-                <label for="onboarding-github-input">GitHub Username (Opt.)</label>
-                <input type="text" id="onboarding-github-input" placeholder="e.g. vivek-bmu" />
+
+              <form class="onboarding-form" onsubmit="submitOnboardingRegistration(event)">
+                <div class="onboarding-field">
+                  <label for="onboarding-name-input">👤 YOUR FULL NAME *</label>
+                  <input type="text" id="onboarding-name-input" required placeholder="e.g. Vivek Yadav" autocomplete="name" />
+                </div>
+
+                <div class="onboarding-field">
+                  <label for="onboarding-email-input">✉️ COLLEGE EMAIL ID *</label>
+                  <input type="email" id="onboarding-email-input" required placeholder="e.g. vivek.yadav.25cse@bmu.edu.in" autocomplete="email" />
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem;">
+                  <div class="onboarding-field">
+                    <label for="onboarding-roll-input">🆔 ROLL NO. (OPTIONAL)</label>
+                    <input type="text" id="onboarding-roll-input" placeholder="e.g. 25CSE042" />
+                  </div>
+                  <div class="onboarding-field">
+                    <label for="onboarding-github-input">🐙 GITHUB USERNAME (OPT.)</label>
+                    <input type="text" id="onboarding-github-input" placeholder="e.g. vivek-bmu" />
+                  </div>
+                </div>
+
+                <button type="submit" class="btn btn-primary onboarding-btn">
+                  <span>🚀 Start 15-Min Challenge & Enter Arena</span>
+                </button>
+              </form>
+            </div>
+
+            <!-- Organizer / Admin Login Panel -->
+            <div id="onboarding-admin-panel" style="display: none;">
+              <div style="background: rgba(54, 228, 212, 0.08); border: 1px solid rgba(54, 228, 212, 0.3); border-radius: var(--radius-md); padding: 0.75rem 1rem; margin-bottom: 1.25rem; font-size: 0.85rem; color: var(--text-muted); text-align: left;">
+                <strong style="color: var(--accent-cyan); display: block; margin-bottom: 0.25rem;">🛡️ Organizer & Proctor Console</strong>
+                Sign in with verified administrator credentials to monitor live participants, trace their PRs and commits, audit focus violations, and manage the leaderboard.
+              </div>
+
+              <form class="onboarding-form" onsubmit="submitLandingAdminLogin(event)">
+                <div class="onboarding-field">
+                  <label for="landing-admin-email">✉️ ORGANIZER EMAIL ID *</label>
+                  <input type="email" id="landing-admin-email" required value="vivek.yadav.25cse@bmu.edu.in" autocomplete="username" />
+                </div>
+
+                <div class="onboarding-field">
+                  <label for="landing-admin-password">🔑 ADMIN PASSWORD *</label>
+                  <input type="password" id="landing-admin-password" required placeholder="Enter organizer password" autocomplete="current-password" />
+                </div>
+
+                <div id="landing-admin-error" style="display: none; color: var(--accent-red); font-size: 0.8rem; margin-bottom: 0.75rem; text-align: left; background: rgba(248, 81, 73, 0.1); border: 1px solid var(--accent-red); padding: 0.4rem 0.6rem; border-radius: var(--radius-sm);">
+                  Invalid Admin ID or Password. Access denied.
+                </div>
+
+                <button type="submit" class="btn btn-primary onboarding-btn" style="background: linear-gradient(135deg, #00f0ff 0%, #38bdf8 100%); color: #000; font-weight: 800;">
+                  <span>🛡️ Sign In & Open Organizer Portal</span>
+                </button>
+              </form>
+            </div>
+          </div>
+        </div>
+
+        <!-- RIGHT SIDE: Capture the Flag Showcase (From Image 2) -->
+        <div class="onboarding-split-right">
+          <div class="ctf-hero-content">
+            <!-- CTF Tag Pill -->
+            <div class="ctf-tag-pill">
+              <span class="ctf-flag-icon">🚩</span>
+              <span>Git & GitHub CTF Arena</span>
+            </div>
+
+            <!-- Big Headline with Glowing 'Flag' and Brush Underline -->
+            <h1 class="ctf-title">
+              Capture the <span class="ctf-flag-highlight">Flag<svg class="ctf-underline-svg" viewBox="0 0 160 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M3 11C45 4 110 3 157 12" stroke="url(#paint0_linear)" stroke-width="4.5" stroke-linecap="round"/><defs><linearGradient id="paint0_linear" x1="3" y1="11" x2="157" y2="12" gradientUnits="userSpaceOnUse"><stop stop-color="#ec4899"/><stop offset="1" stop-color="#a855f7"/></linearGradient></defs></svg></span>
+            </h1>
+
+            <!-- Subtitle -->
+            <p class="ctf-subtitle">
+              A hands-on challenge to learn Git, GitHub and open source collaboration through real tasks.
+            </p>
+
+            <!-- 4 Feature Cards -->
+            <div class="ctf-feature-grid">
+              <div class="ctf-feature-card">
+                <div class="ctf-feature-icon icon-code">
+                  <span>&lt;/&gt;</span>
+                </div>
+                <div class="ctf-feature-label">Git Workflows</div>
+              </div>
+
+              <div class="ctf-feature-card">
+                <div class="ctf-feature-icon icon-github">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
+                    <path fill-rule="evenodd" clip-rule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.53 1.032 1.53 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"/>
+                  </svg>
+                </div>
+                <div class="ctf-feature-label">Real Repos</div>
+              </div>
+
+              <div class="ctf-feature-card">
+                <div class="ctf-feature-icon icon-flag">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"></path>
+                    <line x1="4" y1="22" x2="4" y2="15"></line>
+                  </svg>
+                </div>
+                <div class="ctf-feature-label">CTF Challenges</div>
+              </div>
+
+              <div class="ctf-feature-card">
+                <div class="ctf-feature-icon icon-leaderboard">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M18 20V10"></path>
+                    <path d="M12 20V4"></path>
+                    <path d="M6 20v-6"></path>
+                  </svg>
+                </div>
+                <div class="ctf-feature-label">Live Leaderboard</div>
               </div>
             </div>
-
-            <button type="submit" class="btn btn-primary onboarding-btn">
-              <span>🚀 Start 15-Min Challenge & Enter Arena</span>
-            </button>
-          </form>
-        </div>
-
-        <!-- Organizer / Admin Login Panel -->
-        <div id="onboarding-admin-panel" style="display: none;">
-          <div style="background: rgba(54, 228, 212, 0.08); border: 1px solid rgba(54, 228, 212, 0.3); border-radius: var(--radius-md); padding: 0.75rem 1rem; margin-bottom: 1.25rem; font-size: 0.85rem; color: var(--text-muted); text-align: left;">
-            <strong style="color: var(--accent-cyan); display: block; margin-bottom: 0.25rem;">🛡️ Organizer & Proctor Console</strong>
-            Sign in with verified administrator credentials to monitor live participants, trace their PRs and commits, audit focus violations, and manage the leaderboard.
           </div>
-
-          <form class="onboarding-form" onsubmit="submitLandingAdminLogin(event)">
-            <div class="onboarding-field">
-              <label for="landing-admin-email">Organizer Email ID *</label>
-              <input type="email" id="landing-admin-email" required value="vivek.yadav.25cse@bmu.edu.in" autocomplete="username" />
-            </div>
-
-            <div class="onboarding-field">
-              <label for="landing-admin-password">Admin Password *</label>
-              <input type="password" id="landing-admin-password" required placeholder="Enter organizer password" autocomplete="current-password" />
-            </div>
-
-            <div id="landing-admin-error" style="display: none; color: var(--accent-red); font-size: 0.8rem; margin-bottom: 0.75rem; text-align: left; background: rgba(248, 81, 73, 0.1); border: 1px solid var(--accent-red); padding: 0.4rem 0.6rem; border-radius: var(--radius-sm);">
-              Invalid Admin ID or Password. Access denied.
-            </div>
-
-            <button type="submit" class="btn btn-primary onboarding-btn" style="background: var(--accent-cyan); color: #000; font-weight: 700;">
-              <span>🛡️ Sign In & Open Organizer Portal</span>
-            </button>
-          </form>
         </div>
+
       </div>
     </div>
 
