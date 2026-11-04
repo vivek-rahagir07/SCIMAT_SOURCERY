@@ -420,7 +420,6 @@ function completeParticipantEntry(regData) {
 
   startTimer();
 }
-}
 
 function loadActiveRepository() {
   const repoId = SessionStore.getActiveRepoId();
