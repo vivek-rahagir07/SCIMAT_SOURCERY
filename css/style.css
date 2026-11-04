@@ -1849,3 +1849,95 @@ input:focus, textarea:focus, select:focus {
   75% { transform: scale(1.01) translateX(-3px); }
   100% { transform: scale(1) translateX(0); }
 }
+
+/* MCQ Quiz Modal Styles */
+.quiz-question-box {
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 1.15rem;
+  margin-bottom: 1.25rem;
+}
+
+.quiz-question-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.quiz-question-tag {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--accent-cyan);
+}
+
+.quiz-question-title {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text-main);
+  line-height: 1.45;
+  margin-bottom: 0.85rem;
+}
+
+.quiz-options-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.quiz-option-card {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.65rem 0.85rem;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 0.84rem;
+  font-family: var(--font-mono);
+  color: var(--text-main);
+  transition: all 0.2s ease;
+}
+
+.quiz-option-card:hover {
+  border-color: var(--accent-cyan);
+  background: rgba(56, 189, 248, 0.08);
+}
+
+.quiz-option-card.selected-correct {
+  border-color: var(--accent-green) !important;
+  background: rgba(34, 197, 94, 0.15) !important;
+  color: var(--accent-green) !important;
+  font-weight: 700;
+}
+
+.quiz-option-card.selected-incorrect {
+  border-color: var(--accent-red) !important;
+  background: rgba(248, 81, 73, 0.15) !important;
+  color: var(--accent-red) !important;
+}
+
+.quiz-option-card.reveal-correct {
+  border-color: var(--accent-green) !important;
+  background: rgba(34, 197, 94, 0.1) !important;
+  color: var(--accent-green) !important;
+  font-weight: 700;
+}
+
+.quiz-option-card.disabled {
+  pointer-events: none;
+}
+
+.quiz-explanation {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  background: var(--bg-tertiary);
+  border-left: 3px solid var(--accent-cyan);
+  padding: 0.5rem 0.75rem;
+  margin-top: 0.75rem;
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  line-height: 1.4;
+}

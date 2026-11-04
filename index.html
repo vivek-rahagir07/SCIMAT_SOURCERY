@@ -777,6 +777,34 @@
       </div>
     </div>
 
+    <!-- Mission CLI Knowledge Check / MCQ Quiz Modal -->
+    <div id="mission-quiz-modal" class="modal-backdrop">
+      <div class="modal-window" style="max-width: 620px;">
+        <div class="modal-header" style="background: rgba(56, 189, 248, 0.1); border-bottom: 1px solid rgba(56, 189, 248, 0.3);">
+          <div class="modal-title" style="display: flex; align-items: center; gap: 0.5rem; color: var(--accent-cyan); font-weight: 700;">
+            <span>🧠</span>
+            <span id="quiz-modal-title">Mission CLI Concept Check!</span>
+          </div>
+          <button class="btn btn-sm modal-close-btn" onclick="closeModal('mission-quiz-modal')">✕</button>
+        </div>
+        <div class="modal-body" style="padding: 1.25rem 1.5rem; max-height: 70vh; overflow-y: auto;">
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.25rem; background: var(--bg-tertiary); padding: 0.65rem 0.85rem; border-radius: var(--radius-sm); border: 1px solid var(--border-color); font-size: 0.8rem;">
+            <span>💡 <strong>Command Revision:</strong> Test your understanding of the CLI commands just used!</span>
+            <span class="badge" style="background: rgba(54, 228, 212, 0.2); color: var(--accent-cyan); font-weight: 700;">+25 Bonus XP</span>
+          </div>
+          <div id="quiz-questions-container">
+            <!-- Dynamically populated via showMissionQuizModal() in js/app.js -->
+          </div>
+        </div>
+        <div class="modal-footer" style="display: flex; justify-content: space-between; align-items: center;">
+          <span id="quiz-status-feedback" style="font-size: 0.8rem; font-weight: 600; color: var(--text-muted);">Select the correct command for each question.</span>
+          <button id="quiz-continue-btn" class="btn btn-primary" onclick="finishMissionQuiz()">
+            Continue Sprint 🚀
+          </button>
+        </div>
+      </div>
+    </div>
+
     <!-- Time-Up Modal -->
     <div id="time-up-modal" class="modal-backdrop">
       <div class="modal-window" style="max-width: 480px; text-align: center;">

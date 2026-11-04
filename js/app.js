@@ -1773,6 +1773,9 @@ function renderMissionsDrawer() {
         </div>
 
         <div style="display: flex; justify-content: flex-end; align-items: center; margin-top: 0.5rem; gap: 0.5rem;">
+          <button class="btn btn-sm" onclick="showMissionQuizModal('${m.id}')" title="Test & revise CLI commands for this mission">
+            🧠 CLI Quiz
+          </button>
           <button class="btn btn-sm btn-cyan" onclick="manualVerifyMission('${m.id}')">
             ${isDone ? 'Re-Verify' : 'Verify'}
           </button>
@@ -1807,8 +1810,10 @@ function manualVerifyMission(missionId) {
     if (awardRes.xpAwarded > 0) {
       showToast(awardRes.message, 'success');
       triggerConfetti(75);
+      showMissionQuizModal(missionId);
     } else {
       showToast(`Mission already verified and awarded! Score: ${awardRes.totalXP} XP`, 'info');
+      showMissionQuizModal(missionId);
     }
   } else {
     showToast(res.message, 'error');
@@ -1822,6 +1827,7 @@ function checkAllMissions() {
   const partId = curPart ? curPart.id : currentContributor;
 
   let anyNewAward = false;
+  let newlyAwardedMissionId = null;
 
   for (const m of DEFAULT_MISSIONS) {
     const res = MissionValidator.validateMission(m.id, state, interactionHistory);
@@ -1831,6 +1837,7 @@ function checkAllMissions() {
 
       if (awardRes.xpAwarded > 0) {
         anyNewAward = true;
+        newlyAwardedMissionId = m.id;
         if (card) card.classList.add('completed');
         showToast(awardRes.message, 'success');
         triggerConfetti(70);
@@ -1844,7 +1851,334 @@ function checkAllMissions() {
     updateContributorUI();
     renderMissionsDrawer();
     updateLeaderboardUI();
+    if (newlyAwardedMissionId) {
+      showMissionQuizModal(newlyAwardedMissionId);
+    }
   }
+}
+
+// --- Mission CLI Concept Check (MCQ Quiz Pop-up) ---
+
+const MISSION_QUIZZES = {
+  'mission-1': [
+    {
+      question: "Which terminal command prints the complete contents of 'README.md' directly to the screen?",
+      options: [
+        "cat README.md",
+        "git open README.md",
+        "read README.md",
+        "git show-text README.md"
+      ],
+      correctIndex: 0,
+      explanation: "'cat README.md' is the standard Unix command to output file contents directly in terminal shells."
+    },
+    {
+      question: "Which Git command displays the configured remote repository fetch and push URLs?",
+      options: [
+        "git remote -v",
+        "git url --show",
+        "git network",
+        "git origin list"
+      ],
+      correctIndex: 0,
+      explanation: "'git remote -v' outputs the names and URLs of all configured remotes."
+    }
+  ],
+  'mission-2': [
+    {
+      question: "Which GitHub CLI (gh) command creates a new issue with a title and description from the terminal?",
+      options: [
+        'gh issue create --title "Title" --body "Details"',
+        'git issue new --title "Title"',
+        'gh bug create "Title"',
+        'github issue add "Title"'
+      ],
+      correctIndex: 0,
+      explanation: "'gh issue create' is the official GitHub CLI command to raise an issue with --title and --body."
+    },
+    {
+      question: "How do you view all currently open issues in the repository using the terminal?",
+      options: [
+        "gh issue list",
+        "git issue status",
+        "gh issues show",
+        "git list-issues"
+      ],
+      correctIndex: 0,
+      explanation: "'gh issue list' fetches and displays open issues for the repository in a clean table."
+    }
+  ],
+  'mission-3': [
+    {
+      question: "Which command creates a new branch named 'feature/nav' AND switches to it in one single command?",
+      options: [
+        "git checkout -b feature/nav",
+        "git branch --switch feature/nav",
+        "git branch -new feature/nav",
+        "git create feature/nav"
+      ],
+      correctIndex: 0,
+      explanation: "'git checkout -b <name>' (or 'git switch -c <name>') creates the branch and checks it out immediately."
+    },
+    {
+      question: "In modern Git (2.23+), which dedicated command switches your working tree to an existing branch?",
+      options: [
+        "git switch <branch-name>",
+        "git change <branch-name>",
+        "git move <branch-name>",
+        "git goto <branch-name>"
+      ],
+      correctIndex: 0,
+      explanation: "'git switch' is Git's dedicated command specifically designed for switching branches."
+    }
+  ],
+  'mission-4': [
+    {
+      question: "Which command stages all modified, newly added, and deleted files in the working directory?",
+      options: [
+        "git add .",
+        "git stage -all",
+        "git push --stage",
+        "git commit --all-files"
+      ],
+      correctIndex: 0,
+      explanation: "'git add .' (or 'git add -A') stages all working tree changes into the Git index."
+    },
+    {
+      question: "How do you specify a commit message directly on the command line without opening a text editor?",
+      options: [
+        'git commit -m "your commit message"',
+        'git commit -msg "your commit message"',
+        'git commit --text "your commit message"',
+        'git save "your commit message"'
+      ],
+      correctIndex: 0,
+      explanation: "The '-m' flag in 'git commit -m \"message\"' assigns the log message directly from the command line."
+    }
+  ],
+  'mission-5': [
+    {
+      question: "What is the purpose of the '-u' (or '--set-upstream') flag in 'git push -u origin <branch>'?",
+      options: [
+        "Links local branch to remote branch so subsequent 'git push' and 'git pull' require no arguments",
+        "Unstages any uncommitted files before uploading",
+        "Forces an overwrite of remote changes",
+        "Upgrades the Git version installed on the remote origin"
+      ],
+      correctIndex: 0,
+      explanation: "'-u' establishes tracking between the local branch and upstream remote, enabling simple 'git push' and 'git pull'."
+    },
+    {
+      question: "Which command checks if your local branch is ahead, behind, or up to date with the remote repository?",
+      options: [
+        "git status",
+        "git remote ping",
+        "git compare",
+        "git network status"
+      ],
+      correctIndex: 0,
+      explanation: "'git status' provides working tree state and reports tracking sync against 'origin/<branch>'."
+    }
+  ],
+  'mission-6': [
+    {
+      question: "Which GitHub CLI command opens a pull request from your active feature branch into 'main'?",
+      options: [
+        'gh pr create --title "Feature title" --body "Description"',
+        'git pr open --to main',
+        'gh pull --open',
+        'git request-pull origin main'
+      ],
+      correctIndex: 0,
+      explanation: "'gh pr create' is the GitHub CLI command to submit a Pull Request to team members."
+    },
+    {
+      question: "In GitHub Pull Request terminology, what does the 'head' branch represent?",
+      options: [
+        "The feature branch containing your new commits that you want merged",
+        "The target branch that will receive the merged commits (usually main)",
+        "The first commit made when the repository was initialized",
+        "The remote master server address"
+      ],
+      correctIndex: 0,
+      explanation: "'head' is the topic branch containing your work, while 'base' is the target branch receiving the code."
+    }
+  ],
+  'mission-7': [
+    {
+      question: "Which GitHub CLI command allows a reviewer to approve Pull Request #1 directly from the terminal?",
+      options: [
+        "gh pr review 1 --approve",
+        "git review approve 1",
+        "gh pr merge 1 --yes",
+        "git approve pr 1"
+      ],
+      correctIndex: 0,
+      explanation: "'gh pr review <number> --approve' submits an approval review on the specified PR."
+    },
+    {
+      question: "Which GitHub CLI command merges an approved Pull Request #1 into the base branch?",
+      options: [
+        "gh pr merge 1",
+        "git pull --merge 1",
+        "gh merge pr 1",
+        "git pr finalize 1"
+      ],
+      correctIndex: 0,
+      explanation: "'gh pr merge <number>' completes the merge on GitHub and updates repository status."
+    }
+  ],
+  'mission-8': [
+    {
+      question: "What standard conflict markers does Git insert into a file when merge conflicts occur?",
+      options: [
+        "<<<<<<< HEAD, =======, and >>>>>>> <branch>",
+        "[[[ CONFLICT ]]] and [[[ RESOLVED ]]]",
+        "<!-- CONFLICT START --> and <!-- CONFLICT END -->",
+        "*** MERGE DIFF *** and *** MERGE END ***"
+      ],
+      correctIndex: 0,
+      explanation: "Git inserts '<<<<<<< HEAD' (current branch), '=======' (divider), and '>>>>>>>' (incoming branch) around conflicting lines."
+    },
+    {
+      question: "After manually editing the conflicting files and cleaning up markers, what completes the merge?",
+      options: [
+        "Stage the files with 'git add .' and run 'git commit'",
+        "Run 'git merge --cancel'",
+        "Run 'git reset --hard'",
+        "Delete the branch and re-clone"
+      ],
+      correctIndex: 0,
+      explanation: "Resolving a conflict requires staging the resolved files with 'git add <file>' and running 'git commit' to record the merge commit."
+    }
+  ]
+};
+
+let activeQuizMissionId = null;
+let activeQuizAnswers = {};
+
+function showMissionQuizModal(missionId) {
+  const mission = DEFAULT_MISSIONS.find(m => m.id === missionId);
+  const questions = MISSION_QUIZZES[missionId];
+  if (!questions || !questions.length) return;
+
+  activeQuizMissionId = missionId;
+  activeQuizAnswers = {};
+
+  const titleEl = document.getElementById('quiz-modal-title');
+  if (titleEl) {
+    titleEl.textContent = `Mission ${mission ? mission.number : ''}: ${mission ? mission.title : ''} — CLI Concept Revision`;
+  }
+
+  const container = document.getElementById('quiz-questions-container');
+  if (!container) return;
+
+  container.innerHTML = questions.map((q, qIdx) => `
+    <div class="quiz-question-box" id="quiz-q-${qIdx}">
+      <div class="quiz-question-header">
+        <span class="quiz-question-tag">Question ${qIdx + 1} of ${questions.length}</span>
+        <span style="font-size: 0.72rem; color: var(--text-dim);">CLI Command Mastery</span>
+      </div>
+      <div class="quiz-question-title">${escapeHtml(q.question)}</div>
+      <div class="quiz-options-list">
+        ${q.options.map((opt, optIdx) => `
+          <div class="quiz-option-card" id="opt-${qIdx}-${optIdx}" onclick="handleQuizOptionSelect('${missionId}', ${qIdx}, ${optIdx})">
+            <span style="color: var(--accent-cyan); font-weight: 700; width: 18px;">${String.fromCharCode(65 + optIdx)}.</span>
+            <code style="flex: 1;">${escapeHtml(opt)}</code>
+          </div>
+        `).join('')}
+      </div>
+      <div id="quiz-exp-${qIdx}" class="quiz-explanation" style="display: none;"></div>
+    </div>
+  `).join('');
+
+  const statusEl = document.getElementById('quiz-status-feedback');
+  if (statusEl) {
+    statusEl.textContent = 'Select your answer for each command question.';
+    statusEl.style.color = 'var(--text-muted)';
+  }
+
+  openModal('mission-quiz-modal');
+}
+
+function handleQuizOptionSelect(missionId, qIndex, selectedOptIndex) {
+  const questions = MISSION_QUIZZES[missionId];
+  if (!questions || !questions[qIndex]) return;
+
+  const q = questions[qIndex];
+  if (activeQuizAnswers[qIndex] !== undefined) return; // Already answered
+
+  activeQuizAnswers[qIndex] = selectedOptIndex;
+
+  const isCorrect = selectedOptIndex === q.correctIndex;
+  const qBox = document.getElementById(`quiz-q-${qIndex}`);
+  const selectedEl = document.getElementById(`opt-${qIndex}-${selectedOptIndex}`);
+  const expEl = document.getElementById(`quiz-exp-${qIndex}`);
+
+  // Disable all options for this question
+  q.options.forEach((_, optIdx) => {
+    const el = document.getElementById(`opt-${qIndex}-${optIdx}`);
+    if (el) el.classList.add('disabled');
+  });
+
+  if (isCorrect) {
+    if (selectedEl) selectedEl.classList.add('selected-correct');
+    if (expEl) {
+      expEl.innerHTML = `<strong style="color: var(--accent-green);">✓ Correct!</strong> ${escapeHtml(q.explanation)}`;
+      expEl.style.display = 'block';
+    }
+  } else {
+    if (selectedEl) selectedEl.classList.add('selected-incorrect');
+    const correctEl = document.getElementById(`opt-${qIndex}-${q.correctIndex}`);
+    if (correctEl) correctEl.classList.add('reveal-correct');
+    if (expEl) {
+      expEl.innerHTML = `<strong style="color: var(--accent-red);">✗ Incorrect.</strong> The correct command is: <code>${escapeHtml(q.options[q.correctIndex])}</code>.<br />${escapeHtml(q.explanation)}`;
+      expEl.style.display = 'block';
+    }
+  }
+
+  // Check if all questions in quiz answered
+  const answeredCount = Object.keys(activeQuizAnswers).length;
+  if (answeredCount === questions.length) {
+    const allCorrect = questions.every((item, idx) => activeQuizAnswers[idx] === item.correctIndex);
+    const statusEl = document.getElementById('quiz-status-feedback');
+
+    if (allCorrect) {
+      const bonusKey = `open_sourcery_quiz_bonus_${missionId}`;
+      const alreadyAwarded = localStorage.getItem(bonusKey) === 'true';
+
+      if (!alreadyAwarded) {
+        localStorage.setItem(bonusKey, 'true');
+        const curPart = SessionStore.getCurrentParticipant('session-demo') || SessionStore.getParticipantByName('session-demo', currentContributor);
+        if (curPart) {
+          SessionStore.adjustParticipantXP('session-demo', curPart.id, 25, `CLI Quiz Perfect Revision Bonus for ${missionId}`);
+          updateContributorUI();
+          renderMissionsDrawer();
+          updateLeaderboardUI();
+        }
+      }
+
+      if (statusEl) {
+        statusEl.innerHTML = `<span style="color: var(--accent-green);">🎉 Excellent! Perfect revision. +25 Bonus XP awarded!</span>`;
+      }
+      triggerConfetti(65);
+    } else {
+      if (statusEl) {
+        statusEl.innerHTML = `<span style="color: var(--accent-cyan);">Review the explanations above to solidify your CLI command revision.</span>`;
+      }
+    }
+  }
+}
+
+function finishMissionQuiz() {
+  closeModal('mission-quiz-modal');
+}
+
+if (typeof window !== 'undefined') {
+  window.MISSION_QUIZZES = MISSION_QUIZZES;
+}
+if (typeof globalThis !== 'undefined') {
+  globalThis.MISSION_QUIZZES = MISSION_QUIZZES;
 }
 
 // --- Leaderboard & Participant Moderation ---
