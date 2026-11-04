@@ -127,10 +127,14 @@
         </div>
       </div>
 
-      <!-- Right Action Items: Terminal, Missions Drawer, Admin Portal, Contributor Switcher -->
+      <!-- Right Action Items: Terminal, Live Leaderboard, Missions Drawer, Admin Portal, Contributor Switcher -->
       <div class="nav-right">
         <button id="btn-terminal-toggle" class="btn" title="Toggle Git CLI Terminal (Press ` key)">
           <span>💻 Terminal</span>
+        </button>
+
+        <button id="btn-public-leaderboard" class="btn" onclick="openPublicLeaderboardModal()" title="View Live Workshop Leaderboard">
+          <span>🏆 Leaderboard</span>
         </button>
 
         <button id="btn-missions-toggle" class="btn btn-cyan" title="Open Workshop Missions">
@@ -138,7 +142,7 @@
           <span id="missions-count-badge" class="badge">0/8 Completed</span>
         </button>
 
-        <button id="btn-admin-modal" class="btn" title="Admin Portal & Live Workshop Leaderboard">
+        <button id="btn-admin-modal" class="btn" title="Admin Portal & Workshop Console">
           <span>⚙️ Admin Portal</span>
         </button>
 
@@ -799,6 +803,69 @@
             <button type="submit" class="btn btn-primary">Sign in to Admin Portal</button>
           </div>
         </form>
+      </div>
+    </div>
+
+    <!-- Public Live Leaderboard Modal (Accessible to All Participants & Spectators) -->
+    <div id="public-leaderboard-modal" class="modal-backdrop">
+      <div class="modal-window" style="max-width: 920px;">
+        <div class="modal-header">
+          <div class="modal-title" style="display: flex; align-items: center; gap: 0.5rem; color: var(--accent-cyan); font-weight: 700;">
+            <span>🏆</span>
+            <span>Open Sourcery 2025 — Live Arena Leaderboard</span>
+          </div>
+          <button class="btn btn-sm modal-close-btn">✕</button>
+        </div>
+        <div class="modal-body">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; gap: 0.5rem;">
+            <div>
+              <p style="color: var(--text-dim); font-size: 0.85rem; margin: 0;">
+                Live real-time rankings across all active participants in the arena • Auto-updating
+              </p>
+            </div>
+            <div style="display: flex; gap: 0.5rem; align-items: center;">
+              <span class="badge" style="background: rgba(63, 185, 80, 0.15); color: var(--accent-green); border: 1px solid rgba(63, 185, 80, 0.3);">
+                ⚡ Realtime Cloud Sync Active
+              </span>
+            </div>
+          </div>
+
+          <!-- Quick Participant Stats Row -->
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0.75rem; margin-bottom: 1.25rem;">
+            <div style="background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 0.85rem; text-align: center;">
+              <div style="font-size: 0.7rem; color: var(--text-dim); text-transform: uppercase;">Your Current Rank</div>
+              <div id="public-leaderboard-my-rank" style="font-size: 1.6rem; font-weight: 800; color: var(--accent-cyan); font-family: var(--font-mono);">#--</div>
+            </div>
+            <div style="background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 0.85rem; text-align: center;">
+              <div style="font-size: 0.7rem; color: var(--text-dim); text-transform: uppercase;">Your Verified Score</div>
+              <div id="public-leaderboard-my-xp" style="font-size: 1.6rem; font-weight: 800; color: var(--accent-green); font-family: var(--font-mono);">0 XP</div>
+            </div>
+            <div style="background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 0.85rem; text-align: center;">
+              <div style="font-size: 0.7rem; color: var(--text-dim); text-transform: uppercase;">Total Arena Competitors</div>
+              <div id="public-leaderboard-total-count" style="font-size: 1.6rem; font-weight: 800; color: #fff; font-family: var(--font-mono);">0</div>
+            </div>
+          </div>
+
+          <div style="max-height: 400px; overflow-y: auto; border: 1px solid var(--border-color); border-radius: var(--radius-md);">
+            <table class="leaderboard-table">
+              <thead>
+                <tr>
+                  <th>Rank</th>
+                  <th>Participant</th>
+                  <th>College Email</th>
+                  <th>Verified XP</th>
+                  <th>Missions</th>
+                  <th>Focus Alerts</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody id="public-leaderboard-table-body"></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="modal-footer" style="display: flex; justify-content: flex-end;">
+          <button class="btn btn-primary modal-close-btn">Close Leaderboard</button>
+        </div>
       </div>
     </div>
 

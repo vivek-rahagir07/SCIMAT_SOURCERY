@@ -621,7 +621,7 @@ class SessionStore {
   static hydrateParticipant(sessionId, remoteParticipant) {
     if (!remoteParticipant || !remoteParticipant.id) return;
     const local = this.getParticipant(sessionId, remoteParticipant.id);
-    if (!local || (remoteParticipant.verifiedXP || 0) > (local.verifiedXP || 0)) {
+    if (!local || (remoteParticipant.verifiedXP || 0) > (local.verifiedXP || 0) || remoteParticipant.isDisqualified !== local.isDisqualified) {
       localStorage.setItem(
         `${STORAGE_PREFIX}participant_${sessionId}_${remoteParticipant.id}`,
         JSON.stringify(remoteParticipant)
@@ -635,6 +635,124 @@ class SessionStore {
         );
       }
     }
+  }
+
+  static mergeRemoteLeaderboard(remoteLb) {
+    if (!Array.isArray(remoteLb)) return;
+    if (typeof window !== 'undefined') {
+      window._cachedCloudLeaderboard = remoteLb;
+    }
+    remoteLb.forEach(entry => {
+      if (entry && entry.participantId && entry.name) {
+        const p = {
+          id: entry.participantId,
+          sessionId: 'session-demo',
+          name: entry.name,
+          email: entry.email || '',
+          rollNumber: entry.rollNumber || '',
+          githubUsername: entry.githubUsername || '',
+          verifiedXP: entry.verifiedXP || 0,
+          completedMissions: entry.completedMissions || [],
+          focusViolations: entry.focusViolations || 0,
+          isDisqualified: Boolean(entry.isDisqualified),
+          disqualifiedReason: entry.disqualifiedReason || '',
+          isOnline: Boolean(entry.isOnline),
+          lastActiveAt: entry.lastCompletedAt || Date.now()
+        };
+        this.hydrateParticipant('session-demo', p);
+      }
+    });
+  }
+
+  static mergeRemoteRepo(remote) {
+    if (!remote || !remote.id) return false;
+    const activeId = this.getActiveRepoId();
+    if (remote.id !== activeId) return false;
+
+    const local = this.getRepository(activeId);
+    if (!local) return false;
+
+    let changed = false;
+
+    // 1. Merge Issues
+    const issueMap = new Map();
+    (local.issues || []).forEach(i => issueMap.set(i.id, i));
+    const initIssueCount = issueMap.size;
+    (remote.issues || []).forEach(i => {
+      if (!issueMap.has(i.id)) {
+        issueMap.set(i.id, i);
+        changed = true;
+      } else {
+        const existing = issueMap.get(i.id);
+        if ((i.comments && i.comments.length > (existing.comments || []).length) || i.status !== existing.status) {
+          issueMap.set(i.id, i);
+          changed = true;
+        }
+      }
+    });
+    if (issueMap.size !== initIssueCount) changed = true;
+    local.issues = Array.from(issueMap.values()).sort((a, b) => b.id - a.id);
+
+    // 2. Merge Pull Requests
+    const prMap = new Map();
+    (local.pullRequests || []).forEach(p => prMap.set(p.id, p));
+    const initPrCount = prMap.size;
+    (remote.pullRequests || []).forEach(p => {
+      if (!prMap.has(p.id)) {
+        prMap.set(p.id, p);
+        changed = true;
+      } else {
+        const existing = prMap.get(p.id);
+        if ((p.comments && p.comments.length > (existing.comments || []).length) || p.status !== existing.status) {
+          prMap.set(p.id, p);
+          changed = true;
+        }
+      }
+    });
+    if (prMap.size !== initPrCount) changed = true;
+    local.pullRequests = Array.from(prMap.values()).sort((a, b) => b.id - a.id);
+
+    // 3. Merge Branches
+    if (!local.branches) local.branches = {};
+    for (const [b, commitId] of Object.entries(remote.branches || {})) {
+      if (!local.branches[b]) {
+        local.branches[b] = commitId;
+        changed = true;
+      }
+    }
+
+    // 4. Merge Commits
+    const commitMap = new Map();
+    (local.commits || []).forEach(c => commitMap.set(c.id, c));
+    const initCommitCount = commitMap.size;
+    (remote.commits || []).forEach(c => {
+      if (!commitMap.has(c.id)) {
+        commitMap.set(c.id, c);
+        changed = true;
+      }
+    });
+    if (commitMap.size !== initCommitCount) changed = true;
+    local.commits = Array.from(commitMap.values()).sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+
+    // 5. Merge Activities
+    const actMap = new Map();
+    (local.activities || []).forEach(a => actMap.set(a.id, a));
+    const initActCount = actMap.size;
+    (remote.activities || []).forEach(a => {
+      if (!actMap.has(a.id)) {
+        actMap.set(a.id, a);
+        changed = true;
+      }
+    });
+    if (actMap.size !== initActCount) changed = true;
+    local.activities = Array.from(actMap.values()).sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+
+    if (changed) {
+      localStorage.setItem(`${STORAGE_PREFIX}shared_repo_${local.id}`, JSON.stringify(local));
+      this.broadcast({ type: 'REPO_UPDATED', repoId: local.id, repo: local });
+    }
+
+    return changed;
   }
 
   static getLeaderboard(sessionId = 'session-demo') {
@@ -691,6 +809,18 @@ class SessionStore {
         });
       }
     });
+
+    // Merge in cached cloud leaderboard entries if available
+    if (typeof window !== 'undefined' && Array.isArray(window._cachedCloudLeaderboard)) {
+      window._cachedCloudLeaderboard.forEach(entry => {
+        if (!entry || !entry.name) return;
+        const key = entry.name.toLowerCase();
+        if (disqualified.includes(key)) return;
+        if (!map.has(key) || (entry.verifiedXP || 0) > (map.get(key).verifiedXP || 0)) {
+          map.set(key, entry);
+        }
+      });
+    }
 
     const list = Array.from(map.values());
     list.sort((a, b) => b.verifiedXP - a.verifiedXP);

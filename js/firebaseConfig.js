@@ -274,7 +274,9 @@ window.listenToCloudLeaderboard = function(sessionId, onUpdate) {
         if (snapshot.exists()) {
           const raw = snapshot.val();
           const clean = desanitizeFromFirebase(raw);
-          if (Array.isArray(clean)) onUpdate(clean);
+          if (Array.isArray(clean) && typeof onUpdate === 'function') {
+            onUpdate(clean);
+          }
         }
       });
     }
@@ -282,37 +284,71 @@ window.listenToCloudLeaderboard = function(sessionId, onUpdate) {
   return () => {};
 };
 
-// 8. Pull and Hydrate Cloud State to Local SessionStore on Boot
-window.pullAllFromCloud = async function(sessionId = 'session-demo') {
+// 8. Continuous Live Cloud Synchronization Loop (Multiplayer Engine)
+let isPolling = false;
+
+window.pollCloudState = async function(sessionId = 'session-demo') {
+  if (isPolling) return;
+  isPolling = true;
+
   try {
-    // Fetch remote participants
+    const activeRepoId = typeof SessionStore !== 'undefined' ? SessionStore.getActiveRepoId() : 'repo-college-website';
+
+    // A. Poll Live Leaderboard
+    const remoteLb = await restGet(`sessions/${sessionId}/leaderboard`);
+    if (Array.isArray(remoteLb)) {
+      const cleanLb = desanitizeFromFirebase(remoteLb);
+      if (typeof SessionStore !== 'undefined' && SessionStore.mergeRemoteLeaderboard) {
+        SessionStore.mergeRemoteLeaderboard(cleanLb);
+      }
+      if (typeof updateLeaderboardUI === 'function') {
+        updateLeaderboardUI(cleanLb);
+      }
+    }
+
+    // B. Poll Remote Participants
     const remoteParticipants = await restGet(`sessions/${sessionId}/participants`);
     if (remoteParticipants && typeof remoteParticipants === 'object') {
       const cleanParts = desanitizeFromFirebase(remoteParticipants);
+      let anyNew = false;
       Object.values(cleanParts).forEach(p => {
         if (p && p.id && typeof SessionStore !== 'undefined' && SessionStore.hydrateParticipant) {
           SessionStore.hydrateParticipant(sessionId, p);
+          anyNew = true;
         }
       });
+      if (anyNew && typeof updateContributorUI === 'function') {
+        updateContributorUI();
+      }
     }
 
-    // Fetch remote repository
-    const activeRepoId = typeof SessionStore !== 'undefined' ? SessionStore.getActiveRepoId() : 'repo-college-website';
+    // C. Poll Collaborative Repository
     const remoteRepo = await restGet(`repositories/${activeRepoId}`);
     if (remoteRepo && typeof remoteRepo === 'object') {
       const cleanRepo = desanitizeFromFirebase(remoteRepo);
-      if (cleanRepo && cleanRepo.id && typeof SessionStore !== 'undefined') {
-        localStorage.setItem(`open_sourcery_shared_repo_${cleanRepo.id}`, JSON.stringify(cleanRepo));
+      if (cleanRepo && cleanRepo.id && typeof SessionStore !== 'undefined' && SessionStore.mergeRemoteRepo) {
+        const hasChanges = SessionStore.mergeRemoteRepo(cleanRepo);
+        if (hasChanges) {
+          if (typeof renderAll === 'function') renderAll();
+          if (typeof checkAllMissions === 'function') checkAllMissions();
+        }
       }
     }
 
     updateCloudIndicator('online', 'Cloud DB: Live Sync');
   } catch (err) {
-    console.debug('Initial cloud pull notice:', err);
+    console.debug('Cloud poll notice:', err);
+  } finally {
+    isPolling = false;
   }
 };
 
-// Auto-run cloud hydration and sync on boot
+// 9. Pull and Hydrate Cloud State to Local SessionStore on Boot
+window.pullAllFromCloud = async function(sessionId = 'session-demo') {
+  await window.pollCloudState(sessionId);
+};
+
+// Auto-run cloud hydration, WebSocket listeners, and 2.5s polling loop on boot
 (async function initCloudSyncOnBoot() {
   updateCloudIndicator('online', 'Cloud DB: Connecting...');
   
@@ -325,8 +361,50 @@ window.pullAllFromCloud = async function(sessionId = 'session-demo') {
     if (activeRepo) window.syncRepoToCloud(activeRepo);
   }
 
-  // Pull any cloud participants created on other devices
-  await window.pullAllFromCloud('session-demo');
+  // Initial pull of cloud data
+  await window.pollAllFromCloud('session-demo');
+
+  // Start continuous 2.5s live polling loop
+  setInterval(() => {
+    window.pollCloudState('session-demo');
+  }, 2500);
+
+  // Attach WebSocket listener if SDK is connected
+  if (rtdb) {
+    try {
+      const lbRef = ref(rtdb, 'sessions/session-demo/leaderboard');
+      onValue(lbRef, (snapshot) => {
+        if (snapshot.exists()) {
+          const raw = snapshot.val();
+          const clean = desanitizeFromFirebase(raw);
+          if (Array.isArray(clean)) {
+            if (typeof SessionStore !== 'undefined' && SessionStore.mergeRemoteLeaderboard) {
+              SessionStore.mergeRemoteLeaderboard(clean);
+            }
+            if (typeof updateLeaderboardUI === 'function') {
+              updateLeaderboardUI(clean);
+            }
+          }
+        }
+      });
+
+      const repoRef = ref(rtdb, 'repositories/repo-college-website');
+      onValue(repoRef, (snapshot) => {
+        if (snapshot.exists()) {
+          const raw = snapshot.val();
+          const clean = desanitizeFromFirebase(raw);
+          if (clean && clean.id && typeof SessionStore !== 'undefined' && SessionStore.mergeRemoteRepo) {
+            const changed = SessionStore.mergeRemoteRepo(clean);
+            if (changed && typeof renderAll === 'function') {
+              renderAll();
+            }
+          }
+        }
+      });
+    } catch (e) {
+      console.debug('RTDB listener setup notice:', e);
+    }
+  }
 
   // Broadcast cloud-ready event
   window.dispatchEvent(new CustomEvent('cloud-sync-ready'));

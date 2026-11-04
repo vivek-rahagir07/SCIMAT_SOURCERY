@@ -80,8 +80,23 @@ function initApp() {
   // Attach cloud realtime listeners when cloud is ready
   window.addEventListener('cloud-sync-ready', () => {
     if (typeof window.listenToCloudLeaderboard === 'function') {
-      window.listenToCloudLeaderboard('session-demo', () => {
-        updateLeaderboardUI();
+      window.listenToCloudLeaderboard('session-demo', (cleanLb) => {
+        if (typeof SessionStore !== 'undefined' && SessionStore.mergeRemoteLeaderboard) {
+          SessionStore.mergeRemoteLeaderboard(cleanLb);
+        }
+        updateLeaderboardUI(cleanLb);
+      });
+    }
+    if (typeof window.listenToCloudRepo === 'function') {
+      const activeRepoId = SessionStore.getActiveRepoId();
+      window.listenToCloudRepo(activeRepoId, (cleanRepo) => {
+        if (cleanRepo && cleanRepo.id && typeof SessionStore !== 'undefined' && SessionStore.mergeRemoteRepo) {
+          const changed = SessionStore.mergeRemoteRepo(cleanRepo);
+          if (changed) {
+            loadActiveRepository();
+            renderAll();
+          }
+        }
       });
     }
   });
@@ -2254,67 +2269,147 @@ if (typeof globalThis !== 'undefined') {
 
 // --- Leaderboard & Participant Moderation ---
 
-function updateLeaderboardUI() {
-  const tbody = document.getElementById('leaderboard-table-body');
-  if (!tbody) return;
+function openPublicLeaderboardModal() {
+  updateLeaderboardUI();
+  openModal('public-leaderboard-modal');
+}
 
-  const entries = SessionStore.getLeaderboard('session-demo');
-  if (entries.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--text-dim); padding: 1.5rem;">No registered participants yet.</td></tr>`;
-    return;
+function updateLeaderboardUI(optionalEntries) {
+  let entries = optionalEntries;
+  if (!entries || !Array.isArray(entries) || entries.length === 0) {
+    if (window._cachedCloudLeaderboard && Array.isArray(window._cachedCloudLeaderboard) && window._cachedCloudLeaderboard.length > 0) {
+      entries = window._cachedCloudLeaderboard;
+    } else {
+      entries = SessionStore.getLeaderboard('session-demo');
+    }
+  } else {
+    window._cachedCloudLeaderboard = entries;
   }
 
-  tbody.innerHTML = entries.map(e => {
-    let rankBadgeClass = 'rank-other';
-    if (e.rank === 1) rankBadgeClass = 'rank-1';
-    else if (e.rank === 2) rankBadgeClass = 'rank-2';
-    else if (e.rank === 3) rankBadgeClass = 'rank-3';
+  // Ensure entries are ranked properly
+  entries.sort((a, b) => (b.verifiedXP || 0) - (a.verifiedXP || 0));
+  entries = entries.map((e, idx) => ({ ...e, rank: idx + 1 }));
 
-    const isCurrent = e.name === currentContributor;
-    const focusViolationBadge = (e.focusViolations && e.focusViolations > 0)
-      ? `<span class="badge" style="background: rgba(248, 81, 73, 0.2); color: var(--accent-red);" title="Focus / tab switch violations detected">⚠️ ${e.focusViolations} Alerts</span>`
-      : `<span style="color: var(--accent-green); font-size: 0.75rem;">✓ Clean</span>`;
+  // Update quick stats cards
+  const curEntry = entries.find(e => (e.name || '').trim().toLowerCase() === (currentContributor || '').trim().toLowerCase());
+  const rankEl = document.getElementById('public-leaderboard-my-rank');
+  const xpEl = document.getElementById('public-leaderboard-my-xp');
+  const countEl = document.getElementById('public-leaderboard-total-count');
+  const navXpEl = document.getElementById('nav-user-xp');
 
-    return `
-      <tr style="${isCurrent ? 'background: rgba(54, 228, 212, 0.08); font-weight: 600;' : ''}">
-        <td><span class="rank-pill ${rankBadgeClass}">${e.rank}</span></td>
-        <td>
-          <div style="display: flex; align-items: center; gap: 0.5rem;">
-            <span>${escapeHtml(e.name)}</span>
-            ${isCurrent ? '<span class="badge" style="background: rgba(54, 228, 212, 0.2); color: var(--accent-cyan);">Active</span>' : ''}
-          </div>
-          <div style="font-size: 0.75rem; color: var(--text-dim);">${escapeHtml(e.rollNumber || '')} ${e.githubUsername ? `(@${escapeHtml(e.githubUsername)})` : ''}</div>
-        </td>
-        <td style="font-size: 0.8rem; color: var(--text-muted); font-family: var(--font-mono);">${escapeHtml(e.email || 'N/A')}</td>
-        <td style="font-family: var(--font-mono); color: var(--accent-cyan); font-weight: bold;">${e.verifiedXP} XP</td>
-        <td>${e.completedCount} / 8</td>
-        <td>${focusViolationBadge}</td>
-        <td>
-          ${e.isDisqualified ? `
-            <span class="badge" style="background: rgba(248, 81, 73, 0.25); color: var(--accent-red); font-weight: 700; border: 1px solid var(--accent-red); font-size: 0.65rem;" title="${escapeHtml(e.disqualifiedReason || 'Focus Violation')}">
-              🚫 OUT OF GAME
-            </span>
-          ` : `
-            <span style="display: inline-flex; align-items: center; gap: 0.3rem; font-size: 0.75rem; color: ${e.isOnline ? 'var(--accent-green)' : 'var(--text-dim)'};">
-              <span style="width: 6px; height: 6px; border-radius: 50%; background: ${e.isOnline ? 'var(--accent-green)' : 'var(--text-dim)'};"></span>
-              ${e.isOnline ? 'Live' : 'Offline'}
-            </span>
-          `}
-        </td>
-        <td style="text-align: right; white-space: nowrap;">
-          <button class="btn btn-xs btn-cyan" onclick="openParticipantDossier('${escapeHtml(e.participantId)}', '${escapeHtml(e.name)}')" title="Trace work, commits, PRs, issues and alerts">
-            🔍 Trace
-          </button>
-          <button class="btn btn-xs" onclick="adminPromptAdjustXP('${escapeHtml(e.participantId)}', '${escapeHtml(e.name)}')" title="Adjust verified XP score">
-            ✏️ XP
-          </button>
-          <button class="btn btn-xs btn-danger" onclick="adminRemoveParticipant('${escapeHtml(e.participantId)}', '${escapeHtml(e.name)}')" title="Remove / Disqualify from workshop">
-            🗑️ Remove
-          </button>
-        </td>
-      </tr>
-    `;
-  }).join('');
+  if (rankEl) rankEl.textContent = curEntry ? `#${curEntry.rank}` : '#--';
+  if (xpEl) xpEl.textContent = `${curEntry ? curEntry.verifiedXP : 0} XP`;
+  if (countEl) countEl.textContent = entries.length.toString();
+  if (navXpEl && curEntry) navXpEl.textContent = `${curEntry.verifiedXP} XP`;
+
+  // 1. Render Public Table Body (Clean for all participants)
+  const publicTbody = document.getElementById('public-leaderboard-table-body');
+  if (publicTbody) {
+    if (entries.length === 0) {
+      publicTbody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: var(--text-dim); padding: 1.5rem;">No registered participants yet.</td></tr>`;
+    } else {
+      publicTbody.innerHTML = entries.map(e => {
+        let rankBadgeClass = 'rank-other';
+        if (e.rank === 1) rankBadgeClass = 'rank-1';
+        else if (e.rank === 2) rankBadgeClass = 'rank-2';
+        else if (e.rank === 3) rankBadgeClass = 'rank-3';
+
+        const isCurrent = (e.name || '').toLowerCase() === (currentContributor || '').toLowerCase();
+        const focusViolationBadge = (e.focusViolations && e.focusViolations > 0)
+          ? `<span class="badge" style="background: rgba(248, 81, 73, 0.2); color: var(--accent-red);" title="Focus / tab switch violations detected">⚠️ ${e.focusViolations} Alerts</span>`
+          : `<span style="color: var(--accent-green); font-size: 0.75rem;">✓ Clean</span>`;
+
+        return `
+          <tr style="${isCurrent ? 'background: rgba(54, 228, 212, 0.08); font-weight: 600;' : ''}">
+            <td><span class="rank-pill ${rankBadgeClass}">${e.rank}</span></td>
+            <td>
+              <div style="display: flex; align-items: center; gap: 0.5rem;">
+                <span>${escapeHtml(e.name)}</span>
+                ${isCurrent ? '<span class="badge" style="background: rgba(54, 228, 212, 0.2); color: var(--accent-cyan);">You</span>' : ''}
+              </div>
+              <div style="font-size: 0.75rem; color: var(--text-dim);">${escapeHtml(e.rollNumber || '')} ${e.githubUsername ? `(@${escapeHtml(e.githubUsername)})` : ''}</div>
+            </td>
+            <td style="font-size: 0.8rem; color: var(--text-muted); font-family: var(--font-mono);">${escapeHtml(e.email || 'N/A')}</td>
+            <td style="font-family: var(--font-mono); color: var(--accent-cyan); font-weight: bold;">${e.verifiedXP || 0} XP</td>
+            <td>${e.completedCount || 0} / 8</td>
+            <td>${focusViolationBadge}</td>
+            <td>
+              ${e.isDisqualified ? `
+                <span class="badge" style="background: rgba(248, 81, 73, 0.25); color: var(--accent-red); font-weight: 700; border: 1px solid var(--accent-red); font-size: 0.65rem;">
+                  🚫 OUT OF GAME
+                </span>
+              ` : `
+                <span style="display: inline-flex; align-items: center; gap: 0.3rem; font-size: 0.75rem; color: ${e.isOnline ? 'var(--accent-green)' : 'var(--text-dim)'};">
+                  <span style="width: 6px; height: 6px; border-radius: 50%; background: ${e.isOnline ? 'var(--accent-green)' : 'var(--text-dim)'};"></span>
+                  ${e.isOnline ? 'Live' : 'Offline'}
+                </span>
+              `}
+            </td>
+          </tr>
+        `;
+      }).join('');
+    }
+  }
+
+  // 2. Render Admin Table Body (With moderation action buttons)
+  const adminTbody = document.getElementById('leaderboard-table-body');
+  if (adminTbody) {
+    if (entries.length === 0) {
+      adminTbody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--text-dim); padding: 1.5rem;">No registered participants yet.</td></tr>`;
+    } else {
+      adminTbody.innerHTML = entries.map(e => {
+        let rankBadgeClass = 'rank-other';
+        if (e.rank === 1) rankBadgeClass = 'rank-1';
+        else if (e.rank === 2) rankBadgeClass = 'rank-2';
+        else if (e.rank === 3) rankBadgeClass = 'rank-3';
+
+        const isCurrent = (e.name || '').toLowerCase() === (currentContributor || '').toLowerCase();
+        const focusViolationBadge = (e.focusViolations && e.focusViolations > 0)
+          ? `<span class="badge" style="background: rgba(248, 81, 73, 0.2); color: var(--accent-red);" title="Focus / tab switch violations detected">⚠️ ${e.focusViolations} Alerts</span>`
+          : `<span style="color: var(--accent-green); font-size: 0.75rem;">✓ Clean</span>`;
+
+        return `
+          <tr style="${isCurrent ? 'background: rgba(54, 228, 212, 0.08); font-weight: 600;' : ''}">
+            <td><span class="rank-pill ${rankBadgeClass}">${e.rank}</span></td>
+            <td>
+              <div style="display: flex; align-items: center; gap: 0.5rem;">
+                <span>${escapeHtml(e.name)}</span>
+                ${isCurrent ? '<span class="badge" style="background: rgba(54, 228, 212, 0.2); color: var(--accent-cyan);">Active</span>' : ''}
+              </div>
+              <div style="font-size: 0.75rem; color: var(--text-dim);">${escapeHtml(e.rollNumber || '')} ${e.githubUsername ? `(@${escapeHtml(e.githubUsername)})` : ''}</div>
+            </td>
+            <td style="font-size: 0.8rem; color: var(--text-muted); font-family: var(--font-mono);">${escapeHtml(e.email || 'N/A')}</td>
+            <td style="font-family: var(--font-mono); color: var(--accent-cyan); font-weight: bold;">${e.verifiedXP || 0} XP</td>
+            <td>${e.completedCount || 0} / 8</td>
+            <td>${focusViolationBadge}</td>
+            <td>
+              ${e.isDisqualified ? `
+                <span class="badge" style="background: rgba(248, 81, 73, 0.25); color: var(--accent-red); font-weight: 700; border: 1px solid var(--accent-red); font-size: 0.65rem;" title="${escapeHtml(e.disqualifiedReason || 'Focus Violation')}">
+                  🚫 OUT OF GAME
+                </span>
+              ` : `
+                <span style="display: inline-flex; align-items: center; gap: 0.3rem; font-size: 0.75rem; color: ${e.isOnline ? 'var(--accent-green)' : 'var(--text-dim)'};">
+                  <span style="width: 6px; height: 6px; border-radius: 50%; background: ${e.isOnline ? 'var(--accent-green)' : 'var(--text-dim)'};"></span>
+                  ${e.isOnline ? 'Live' : 'Offline'}
+                </span>
+              `}
+            </td>
+            <td style="text-align: right; white-space: nowrap;">
+              <button class="btn btn-xs btn-cyan" onclick="openParticipantDossier('${escapeHtml(e.participantId)}', '${escapeHtml(e.name)}')" title="Trace work, commits, PRs, issues and alerts">
+                🔍 Trace
+              </button>
+              <button class="btn btn-xs" onclick="adminPromptAdjustXP('${escapeHtml(e.participantId)}', '${escapeHtml(e.name)}')" title="Adjust verified XP score">
+                ✏️ XP
+              </button>
+              <button class="btn btn-xs btn-danger" onclick="adminRemoveParticipant('${escapeHtml(e.participantId)}', '${escapeHtml(e.name)}')" title="Remove / Disqualify from workshop">
+                🗑️ Remove
+              </button>
+            </td>
+          </tr>
+        `;
+      }).join('');
+    }
+  }
 }
 
 function openParticipantDossier(participantId, name) {
