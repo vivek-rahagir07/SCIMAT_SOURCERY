@@ -38,6 +38,22 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 });
 
+// --- Admin Verification Credentials (Protected / Obfuscated) ---
+const ADMIN_CONFIG = {
+  email: 'vivek.yadav.25cse@bmu.edu.in',
+  token: 'cWF6cGxt' // base64 representation of master pass
+};
+
+function verifyAdminCredentials(email, pass) {
+  if (!email || !pass) return false;
+  if (email.trim().toLowerCase() !== ADMIN_CONFIG.email.toLowerCase()) return false;
+  try {
+    return btoa(pass) === ADMIN_CONFIG.token;
+  } catch {
+    return false;
+  }
+}
+
 function initApp() {
   SessionStore.initDefaultSession();
 
@@ -50,6 +66,11 @@ function initApp() {
     if (overlay) overlay.style.display = 'flex';
   } else {
     if (overlay) overlay.style.display = 'none';
+  }
+
+  // If user was previously disqualified, enforce the lock immediately
+  if (localStorage.getItem('open_sourcery_disqualified') === 'true' && !isAdmin) {
+    showDisqualifiedScreen(localStorage.getItem('open_sourcery_disqualified_reason') || 'Focus violation during sprint');
   }
 
   currentContributor = SessionStore.getActiveContributor();
@@ -85,7 +106,7 @@ function submitLandingAdminLogin(e) {
   const email = (emailInput ? emailInput.value : '').trim().toLowerCase();
   const pass = passInput ? passInput.value : '';
 
-  if (email === ADMIN_CONFIG.email.toLowerCase() && pass === ADMIN_CONFIG.pass) {
+  if (verifyAdminCredentials(email, pass)) {
     sessionStorage.setItem('open_sourcery_admin_auth', 'true');
     const overlay = document.getElementById('onboarding-overlay');
     if (overlay) overlay.style.display = 'none';
@@ -1665,7 +1686,13 @@ function handleTerminalKeydown(e) {
 function executeTerminalCommand(cmd) {
   const body = document.getElementById('terminal-body');
   const repoName = git.getState().name;
-  const promptStr = `${currentContributor.toLowerCase()}@open-sourcery:~/${repoName} (${git.getState().currentBranch})$ `;
+  const promptStr = `${currentContributor.toLowerCase().replace(/\s+/g, '')}@open-sourcery:~/${repoName} (${git.getState().currentBranch})$ `;
+
+  const trimmed = cmd.trim();
+  // If participant inspects README through terminal command (cat, more, less, head, git show), mark README as viewed!
+  if (/^(cat|more|less|head|tail)\s+readme/i.test(trimmed) || /git\s+show.*readme/i.test(trimmed)) {
+    interactionHistory.hasViewedReadme = true;
+  }
 
   const output = git.executeCLI(cmd, currentContributor);
 
@@ -1677,7 +1704,7 @@ function executeTerminalCommand(cmd) {
   if (body) {
     const entry = document.createElement('div');
     entry.className = 'terminal-history-entry';
-    entry.innerHTML = `<span class="terminal-prompt-str">${promptStr}</span><span style="color: #fff;">${escapeHtml(cmd)}</span>\n<span style="color: #94a3b8;">${escapeHtml(output)}</span>`;
+    entry.innerHTML = `<span class="terminal-prompt-str">${promptStr}</span><span style="color: #fff;">${escapeHtml(cmd)}</span>\n<span style="color: #94a3b8; white-space: pre-wrap; font-family: var(--font-mono);">${escapeHtml(output)}</span>`;
     body.appendChild(entry);
     body.scrollTop = body.scrollHeight;
   }
@@ -1858,10 +1885,16 @@ function updateLeaderboardUI() {
         <td>${e.completedCount} / 8</td>
         <td>${focusViolationBadge}</td>
         <td>
-          <span style="display: inline-flex; align-items: center; gap: 0.3rem; font-size: 0.75rem; color: ${e.isOnline ? 'var(--accent-green)' : 'var(--text-dim)'};">
-            <span style="width: 6px; height: 6px; border-radius: 50%; background: ${e.isOnline ? 'var(--accent-green)' : 'var(--text-dim)'};"></span>
-            ${e.isOnline ? 'Live' : 'Offline'}
-          </span>
+          ${e.isDisqualified ? `
+            <span class="badge" style="background: rgba(248, 81, 73, 0.25); color: var(--accent-red); font-weight: 700; border: 1px solid var(--accent-red); font-size: 0.65rem;" title="${escapeHtml(e.disqualifiedReason || 'Focus Violation')}">
+              🚫 OUT OF GAME
+            </span>
+          ` : `
+            <span style="display: inline-flex; align-items: center; gap: 0.3rem; font-size: 0.75rem; color: ${e.isOnline ? 'var(--accent-green)' : 'var(--text-dim)'};">
+              <span style="width: 6px; height: 6px; border-radius: 50%; background: ${e.isOnline ? 'var(--accent-green)' : 'var(--text-dim)'};"></span>
+              ${e.isOnline ? 'Live' : 'Offline'}
+            </span>
+          `}
         </td>
         <td style="text-align: right; white-space: nowrap;">
           <button class="btn btn-xs btn-cyan" onclick="openParticipantDossier('${escapeHtml(e.participantId)}', '${escapeHtml(e.name)}')" title="Trace work, commits, PRs, issues and alerts">
@@ -1889,7 +1922,8 @@ function openParticipantDossier(participantId, name) {
                  githubUsername: '',
                  verifiedXP: 0,
                  completedMissions: [],
-                 focusViolations: 0
+                 focusViolations: 0,
+                 isDisqualified: false
                };
 
   const state = git ? git.getState() : (activeRepo || {});
@@ -1908,6 +1942,18 @@ function openParticipantDossier(participantId, name) {
   if (!bodyEl) return;
 
   bodyEl.innerHTML = `
+    ${part.isDisqualified ? `
+      <div style="background: rgba(248, 81, 73, 0.15); border: 1.5px solid var(--accent-red); border-radius: var(--radius-md); padding: 0.75rem 1rem; margin-bottom: 1rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
+        <div>
+          <strong style="color: var(--accent-red); display: block; font-size: 0.85rem;">🚫 PARTICIPANT OUT OF THE GAME (DISQUALIFIED)</strong>
+          <span style="color: var(--text-muted); font-size: 0.75rem;">Reason: ${escapeHtml(part.disqualifiedReason || 'Focus / full-screen violation')}</span>
+        </div>
+        <button class="btn btn-sm btn-cyan" onclick="adminReinstateParticipant('${escapeHtml(part.id)}', '${escapeHtml(name)}')">
+          🔓 Reinstate Participant
+        </button>
+      </div>
+    ` : ''}
+
     <!-- Top Profile & Quick Actions Banner -->
     <div class="dossier-header-card">
       <div style="display: flex; align-items: center; gap: 0.85rem;">
@@ -2118,11 +2164,6 @@ function adminPromptAdjustXP(participantId, name) {
 
 // --- Admin Workshop Console & Authentication ---
 
-const ADMIN_CONFIG = {
-  email: 'vivek.yadav.25cse@bmu.edu.in',
-  pass: 'qazplm'
-};
-
 function isAdminAuthenticated() {
   return sessionStorage.getItem('open_sourcery_admin_auth') === 'true';
 }
@@ -2152,7 +2193,7 @@ function submitAdminLogin(e) {
   const email = (emailInput ? emailInput.value : '').trim().toLowerCase();
   const pass = passInput ? passInput.value : '';
 
-  if (email === ADMIN_CONFIG.email.toLowerCase() && pass === ADMIN_CONFIG.pass) {
+  if (verifyAdminCredentials(email, pass)) {
     sessionStorage.setItem('open_sourcery_admin_auth', 'true');
     closeModal('admin-login-modal');
     updateLeaderboardUI();
@@ -2336,9 +2377,11 @@ function logoutParticipant() {
   }
 }
 
-// --- Fullscreen & Tab-Switch Protection Guards ---
+// --- Fullscreen & Tab-Switch Protection Guards (Instant Disqualification) ---
 
 function isUserSprintActive() {
+  if (localStorage.getItem('open_sourcery_disqualified') === 'true') return false;
+  if (isAdminAuthenticated()) return false;
   const isRegistered = localStorage.getItem('open_sourcery_user_registered') === 'true';
   if (!isRegistered) return false;
   const startTime = parseInt(localStorage.getItem('open_sourcery_timer_start'), 10);
@@ -2364,33 +2407,72 @@ function requestAppFullscreen() {
   }
 }
 
-function resumeFullscreenAndDismissLock() {
-  requestAppFullscreen();
-  const lockModal = document.getElementById('fullscreen-lock-modal');
-  if (lockModal) lockModal.classList.remove('open');
-}
-
 function triggerTabSwitchViolation(reason = 'Tab switch detected') {
-  if (!isUserSprintActive()) return;
+  if (!isUserSprintActive() || isAdminAuthenticated()) return;
 
   let violations = parseInt(localStorage.getItem('open_sourcery_tab_switch_count') || '0', 10) + 1;
   localStorage.setItem('open_sourcery_tab_switch_count', violations.toString());
+  localStorage.setItem('open_sourcery_disqualified', 'true');
+  localStorage.setItem('open_sourcery_disqualified_reason', reason);
 
   const curPart = SessionStore.getCurrentParticipant('session-demo') || SessionStore.getParticipantByName('session-demo', currentContributor);
   if (curPart) {
-    SessionStore.recordParticipantViolation('session-demo', curPart.id, reason);
+    SessionStore.disqualifyParticipant('session-demo', curPart.id, reason);
   }
 
-  const countDisplay = document.getElementById('tab-switch-count-display');
-  if (countDisplay) countDisplay.textContent = violations;
-
-  const lockModal = document.getElementById('fullscreen-lock-modal');
-  if (lockModal) lockModal.classList.add('open');
+  if (timerInterval) clearInterval(timerInterval);
 
   if (git) {
-    git.recordAction('SECURITY_ALERT', `Focus violation #${violations} (${reason})`, currentContributor);
+    git.recordAction('DISQUALIFIED', `OUT OF GAME: ${reason}`, currentContributor);
     saveActiveRepository();
   }
+
+  showDisqualifiedScreen(reason);
+}
+
+function showDisqualifiedScreen(reason = 'Window switched / Tab lost focus') {
+  const modal = document.getElementById('disqualified-modal');
+  const reasonEl = document.getElementById('disqualified-reason-display');
+  const scoreEl = document.getElementById('disqualified-score-display');
+  const missionsEl = document.getElementById('disqualified-missions-display');
+
+  const curPart = SessionStore.getCurrentParticipant('session-demo') || SessionStore.getParticipantByName('session-demo', currentContributor);
+  const score = curPart ? (curPart.verifiedXP || 0) : 0;
+  const missionsCount = curPart && curPart.completedMissions ? curPart.completedMissions.length : 0;
+
+  if (reasonEl) reasonEl.textContent = reason;
+  if (scoreEl) scoreEl.textContent = `${score} XP`;
+  if (missionsEl) missionsEl.textContent = `${missionsCount} / 8`;
+
+  if (modal) modal.classList.add('open');
+  updateLeaderboardUI();
+}
+
+function restartOrExitAfterDisqualification() {
+  localStorage.removeItem('open_sourcery_disqualified');
+  localStorage.removeItem('open_sourcery_disqualified_reason');
+  localStorage.removeItem('open_sourcery_user_registered');
+  localStorage.removeItem('open_sourcery_timer_start');
+  localStorage.removeItem('open_sourcery_tab_switch_count');
+  closeModal('disqualified-modal');
+  const overlay = document.getElementById('onboarding-overlay');
+  if (overlay) {
+    overlay.style.display = 'flex';
+    switchOnboardingMode('participant');
+  }
+}
+
+function adminReinstateParticipant(participantId, name) {
+  SessionStore.reinstateParticipant('session-demo', participantId);
+  if (name === currentContributor) {
+    localStorage.removeItem('open_sourcery_disqualified');
+    localStorage.removeItem('open_sourcery_disqualified_reason');
+    closeModal('disqualified-modal');
+  }
+  updateLeaderboardUI();
+  updateAdminUI();
+  openParticipantDossier(participantId, name);
+  showToast(`Reinstated "${name}" into the active sprint.`, 'success');
 }
 
 function handleFullscreenStateChange() {

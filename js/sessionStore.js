@@ -10,7 +10,7 @@ const channel = typeof window !== 'undefined' && 'BroadcastChannel' in window
 
 class SessionStore {
   static checkAndMigrateCleanState() {
-    const CLEAN_VERSION = 'v3_clean_nodummy';
+    const CLEAN_VERSION = 'v4_rich_codebase';
     if (typeof localStorage === 'undefined') return;
     const currentVersion = localStorage.getItem(`${STORAGE_PREFIX}schema_version`);
     if (currentVersion !== CLEAN_VERSION) {
@@ -393,6 +393,47 @@ class SessionStore {
     this.broadcast({ type: 'FOCUS_VIOLATION', participantId: participant.id, violations: participant.focusViolations });
   }
 
+  static disqualifyParticipant(sessionId, participantId, reason = 'Tab switch / window minimized') {
+    let participant = this.getParticipant(sessionId, participantId);
+    if (!participant) {
+      const activeName = this.getActiveContributor();
+      participant = this.getParticipantByName(sessionId, activeName);
+    }
+    if (!participant) return { success: false };
+
+    participant.isDisqualified = true;
+    participant.disqualifiedReason = reason;
+    participant.disqualifiedAt = Date.now();
+    participant.lastActiveAt = Date.now();
+
+    localStorage.setItem(
+      `${STORAGE_PREFIX}participant_${sessionId}_${participant.id}`,
+      JSON.stringify(participant)
+    );
+
+    this.recordActivity(this.getActiveRepoId(), participant.name, 'security', `🚨 DISQUALIFIED (OUT OF GAME): ${reason}`);
+    this.broadcast({ type: 'PARTICIPANT_DISQUALIFIED', participantId: participant.id, name: participant.name, reason });
+    return { success: true, participant };
+  }
+
+  static reinstateParticipant(sessionId, participantId) {
+    let participant = this.getParticipant(sessionId, participantId);
+    if (!participant) return { success: false };
+
+    participant.isDisqualified = false;
+    delete participant.disqualifiedReason;
+    delete participant.disqualifiedAt;
+
+    localStorage.setItem(
+      `${STORAGE_PREFIX}participant_${sessionId}_${participant.id}`,
+      JSON.stringify(participant)
+    );
+
+    this.recordActivity(this.getActiveRepoId(), 'Admin (Vivek)', 'audit', `Reinstated participant ${participant.name} to active sprint.`);
+    this.broadcast({ type: 'PARTICIPANT_REINSTATED', participantId: participant.id, name: participant.name });
+    return { success: true, participant };
+  }
+
   static awardMission(sessionId, participantId, missionId, evidence = {}) {
     let participant = this.getParticipant(sessionId, participantId);
     if (!participant) {
@@ -523,6 +564,7 @@ class SessionStore {
       if (p.name && disqualified.includes(p.name.toLowerCase())) return;
 
       const violations = p.focusViolations || (p.name === this.getActiveContributor() ? parseInt(localStorage.getItem('open_sourcery_tab_switch_count') || '0', 10) : 0);
+      const isDisq = Boolean(p.isDisqualified);
       map.set(p.name.toLowerCase(), {
         participantId: p.id,
         name: p.name,
@@ -533,8 +575,10 @@ class SessionStore {
         completedCount: (p.completedMissions || []).length,
         completedMissions: p.completedMissions || [],
         focusViolations: violations,
+        isDisqualified: isDisq,
+        disqualifiedReason: p.disqualifiedReason || '',
         lastCompletedAt: p.lastActiveAt || Date.now(),
-        isOnline: Boolean(p.isOnline),
+        isOnline: isDisq ? false : Boolean(p.isOnline),
         registeredAt: p.registeredAt || Date.now()
       });
     });

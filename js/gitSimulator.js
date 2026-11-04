@@ -470,35 +470,306 @@ class GitSimulator {
     const trimmed = cmdString.trim();
     if (!trimmed) return '';
 
-    if (trimmed === 'clear') {
+    // Shell tokenizer supporting quoted strings
+    const tokenize = (str) => {
+      const regex = /[^\s"']+|"([^"]*)"|'([^']*)'/g;
+      const tokens = [];
+      let match;
+      while ((match = regex.exec(str)) !== null) {
+        if (match[1] !== undefined) tokens.push(match[1]);
+        else if (match[2] !== undefined) tokens.push(match[2]);
+        else tokens.push(match[0]);
+      }
+      return tokens;
+    };
+
+    const tokens = tokenize(trimmed);
+    const mainCmd = (tokens[0] || '').toLowerCase();
+
+    if (mainCmd === 'clear') {
       return '__CLEAR__';
     }
 
-    if (trimmed === 'help') {
-      return `Open Sourcery Simulated Git Shell
-Supported Commands:
-  git status                          - Show working tree & staging status
-  git add <file> | git add .          - Stage modified files
-  git commit -m "commit message"      - Commit staged changes
-  git branch                          - List local branches
-  git branch <name>                   - Create a new branch
-  git switch <name>                   - Switch to branch
-  git checkout -b <name>              - Create and switch to new branch
-  git push origin <branch>            - Push branch to remote
-  git pull origin <branch>            - Pull latest changes
-  git merge <branch>                  - Merge branch into current HEAD
-  git log | git log --oneline         - View commit history
-  git diff                            - Show unstaged differences
-  clear                               - Clear terminal
+    if (mainCmd === 'help' || (mainCmd === 'git' && tokens[1] === 'help') || (mainCmd === 'gh' && tokens[1] === 'help')) {
+      return `Open Sourcery — Full Git & GitHub CLI Terminal
+=====================================================
+📌 Core Git Commands:
+  git status                         - Show working tree status & staging index
+  git add <file> | git add .         - Stage changes for upcoming commit
+  git commit -m "<message>"          - Commit staged changes to current branch
+  git branch                         - List local branches (* marks active branch)
+  git branch <name>                  - Create a new feature branch
+  git branch -d <name>               - Delete a branch
+  git checkout <branch>              - Switch to an existing branch
+  git checkout -b <name>             - Create and switch to new branch
+  git switch <branch>                - Switch branches (modern Git syntax)
+  git switch -c <name>               - Create and switch to new branch
+  git push origin <branch>           - Push local commits to remote repository
+  git pull origin <branch>           - Pull latest updates from remote repository
+  git merge <branch>                 - Merge a diverging branch into current branch
+  git log | git log --oneline        - View recent commit history
+  git diff                           - Inspect uncommitted changes
+  git remote -v                      - View connected remote repositories
+
+🚀 GitHub CLI (gh) Commands:
+  gh pr create                       - Open Pull Request into main
+    Flags: --title "...", --body "...", --head <branch>, --base <branch>
+  gh pr list                         - List open pull requests
+  gh pr view <number>                - View details & diff of a pull request
+  gh pr review <number> --approve    - Review & approve a pull request
+  gh pr merge <number>               - Merge pull request into main
+  gh issue create                    - Raise a new issue on GitHub
+    Flags: --title "...", --body "..."
+  gh issue list                      - List open repository issues
+  gh issue view <number>             - View issue details
+  gh issue close <number>            - Close an issue
+  gh repo view                       - View repository details & stats
+  gh auth status                     - Check GitHub authenticated user status
+
+💻 Standard Shell Commands:
+  ls | ls -l                         - List files in working directory
+  cat <file>                         - Print contents of a file (e.g. cat README.md)
+  touch <file>                       - Create a new empty file
+  rm <file>                          - Remove a file from working directory
+  pwd                                - Print current working directory
+  whoami                             - Print active contributor username
+  clear                              - Clear terminal output
 `;
     }
 
-    if (!trimmed.startsWith('git ')) {
-      return `bash: ${trimmed.split(' ')[0]}: command not found. Type "help" for a list of Git commands.`;
+    // --- Standard Unix / Shell Commands ---
+    if (mainCmd === 'ls' || mainCmd === 'dir') {
+      const files = Object.keys(this.state.files);
+      if (tokens.includes('-l') || tokens.includes('-la')) {
+        return files.map(f => {
+          const size = (this.state.files[f] || '').length;
+          return `-rw-r--r--  1 student student  ${String(size).padStart(5, ' ')}  Nov 04 00:00  ${f}`;
+        }).join('\n');
+      }
+      return files.join('   ');
     }
 
-    const parts = trimmed.substring(4).trim().split(/\s+/);
-    const sub = parts[0];
+    if (mainCmd === 'cat') {
+      const target = tokens[1];
+      if (!target) return 'cat: missing filename';
+      if (this.state.files[target] !== undefined) {
+        return this.state.files[target];
+      }
+      return `cat: ${target}: No such file or directory`;
+    }
+
+    if (mainCmd === 'touch') {
+      const target = tokens[1];
+      if (!target) return 'touch: missing file operand';
+      if (!this.state.files[target]) {
+        this.state.files[target] = '';
+        this.recordAction('TOUCH', `Created file ${target}`, author);
+        return `Created file '${target}'`;
+      }
+      return `Updated timestamp for '${target}'`;
+    }
+
+    if (mainCmd === 'rm') {
+      const target = tokens[1];
+      if (!target) return 'rm: missing operand';
+      if (this.state.files[target] !== undefined) {
+        delete this.state.files[target];
+        delete this.state.stagedFiles[target];
+        this.recordAction('DELETE_FILE', `Removed file ${target}`, author);
+        return `Removed '${target}'`;
+      }
+      return `rm: cannot remove '${target}': No such file or directory`;
+    }
+
+    if (mainCmd === 'pwd') {
+      return `/home/${author.toLowerCase().replace(/\s+/g, '-')}/workspace/${this.state.name}`;
+    }
+
+    if (mainCmd === 'whoami') {
+      return author;
+    }
+
+    if (mainCmd === 'date') {
+      return new Date().toString();
+    }
+
+    // --- GitHub CLI (`gh`) Commands ---
+    if (mainCmd === 'gh') {
+      const group = (tokens[1] || '').toLowerCase();
+      const action = (tokens[2] || '').toLowerCase();
+
+      // Parse flags
+      const flags = {};
+      const positional = [];
+      for (let i = 2; i < tokens.length; i++) {
+        const t = tokens[i];
+        if (t.startsWith('--') || (t.startsWith('-') && t.length === 2)) {
+          const key = t.replace(/^-+/, '');
+          if (i + 1 < tokens.length && !tokens[i + 1].startsWith('-')) {
+            flags[key] = tokens[i + 1];
+            i++;
+          } else {
+            flags[key] = true;
+          }
+        } else {
+          positional.push(t);
+        }
+      }
+
+      // gh repo view
+      if (group === 'repo' && (action === 'view' || !action)) {
+        return `open-sourcery/${this.state.name}
+Description:  ${this.state.description || 'Campus Open Source Repository'}
+Visibility:   ${this.state.isPublic ? 'Public' : 'Private'}
+Default Branch: ${this.state.defaultBranch}
+Stars:        ${this.state.stars || 0}
+Forks:        ${this.state.forks || 0}
+Open PRs:     ${(this.state.pullRequests || []).filter(p => p.status === 'open').length}
+Open Issues:  ${(this.state.issues || []).filter(i => i.status === 'open').length}
+`;
+      }
+
+      // gh auth status / gh status
+      if (group === 'auth' || group === 'status') {
+        return `github.com
+  ✓ Logged in to github.com account ${author.toLowerCase().replace(/\s+/g, '')} (keyring)
+  - Active account: true
+  - Git operations protocol: https
+  - Token: gho_************************************
+`;
+      }
+
+      // gh pr ...
+      if (group === 'pr') {
+        const prAction = action || positional[0] || 'list';
+
+        if (prAction === 'create') {
+          const title = flags.title || flags.t || 'Proposed changes for ' + this.state.currentBranch;
+          const body = flags.body || flags.b || 'Pull request submitted via GitHub CLI';
+          const head = flags.head || flags.H || this.state.currentBranch;
+          const base = flags.base || flags.B || 'main';
+
+          if (head === base) {
+            return `error: cannot create pull request where head and base are identical ('${head}'). Switch to a feature branch first: git checkout -b feature/<name>`;
+          }
+
+          const res = this.createPullRequest(title, body, head, base, author);
+          if (!res.success) return `error: ${res.message}`;
+
+          return `Creating pull request for ${head} into ${base} in open-sourcery/${this.state.name}\n\nhttps://github.com/open-sourcery/${this.state.name}/pull/${res.pullRequest.number}\n✓ Created pull request #${res.pullRequest.number} ("${title}")`;
+        }
+
+        if (prAction === 'list') {
+          const prs = this.state.pullRequests || [];
+          if (prs.length === 0) return 'No open pull requests in open-sourcery/' + this.state.name;
+          let out = `Showing ${prs.length} pull request(s) in open-sourcery/${this.state.name}\n\n`;
+          prs.forEach(p => {
+            const statusSym = p.status === 'merged' ? '🟣 MERGED' : '🟢 OPEN';
+            out += `#${p.number}  ${p.title.padEnd(35, ' ')}  ${p.headBranch}:${p.baseBranch}  ${statusSym}  ${p.author}\n`;
+          });
+          return out;
+        }
+
+        if (prAction === 'view') {
+          const targetNum = parseInt(positional[1] || positional[0] || '1', 10);
+          const pr = (this.state.pullRequests || []).find(p => p.number === targetNum);
+          if (!pr) return `error: pull request #${targetNum} not found`;
+          return `title:\t${pr.title}
+number:\t#${pr.number}
+state:\t${pr.status.toUpperCase()}
+author:\t${pr.author}
+branch:\t${pr.headBranch} -> ${pr.baseBranch}
+reviews:\t${(pr.reviews || []).length} review(s)
+
+-- Description --
+${pr.description || '(No description provided)'}
+`;
+        }
+
+        if (prAction === 'review') {
+          const targetNum = parseInt(positional[1] || positional[0] || '1', 10);
+          const pr = (this.state.pullRequests || []).find(p => p.number === targetNum);
+          if (!pr) return `error: pull request #${targetNum} not found`;
+          const approve = flags.approve || flags.a || tokens.includes('--approve');
+          const status = approve ? 'APPROVED' : 'COMMENT';
+          this.reviewPullRequest(pr.id, author, status, 'Approved via GitHub CLI');
+          return `✓ Submitted review (${status}) on pull request #${pr.number}`;
+        }
+
+        if (prAction === 'merge') {
+          const targetNum = parseInt(positional[1] || positional[0] || (this.state.pullRequests[0]?.number), 10);
+          const pr = (this.state.pullRequests || []).find(p => p.number === targetNum);
+          if (!pr) return `error: no open pull request found to merge`;
+          const res = this.mergePullRequest(pr.id, author);
+          return res.message;
+        }
+
+        return `gh: unknown pr command '${prAction}'. Run "help" for details.`;
+      }
+
+      // gh issue ...
+      if (group === 'issue') {
+        const issueAction = action || positional[0] || 'list';
+
+        if (issueAction === 'create') {
+          const title = flags.title || flags.t || positional[1] || positional[0];
+          if (!title) {
+            return `error: --title flag is required\nUsage: gh issue create --title "Issue Title" --body "Issue description"`;
+          }
+          const body = flags.body || flags.b || 'Issue raised via GitHub CLI';
+          const label = flags.label || flags.l || 'bug';
+          const res = this.createIssue(title, body, label, author);
+          if (!res.success) return `error: ${res.message}`;
+          return `https://github.com/open-sourcery/${this.state.name}/issues/${res.issue.number}\n✓ Created issue #${res.issue.number} ("${title}")`;
+        }
+
+        if (issueAction === 'list') {
+          const issues = this.state.issues || [];
+          if (issues.length === 0) return 'No open issues in open-sourcery/' + this.state.name;
+          let out = `Showing ${issues.length} issue(s) in open-sourcery/${this.state.name}\n\n`;
+          issues.forEach(i => {
+            const statusSym = i.status === 'open' ? '🟢 OPEN' : '🟣 CLOSED';
+            out += `#${i.number}  ${i.title.padEnd(35, ' ')}  [${i.label || 'issue'}]  ${statusSym}  ${i.author}\n`;
+          });
+          return out;
+        }
+
+        if (issueAction === 'view') {
+          const targetNum = parseInt(positional[1] || positional[0] || '1', 10);
+          const issue = (this.state.issues || []).find(i => i.number === targetNum);
+          if (!issue) return `error: issue #${targetNum} not found`;
+          return `title:\t${issue.title}
+number:\t#${issue.number}
+state:\t${issue.status.toUpperCase()}
+author:\t${issue.author}
+label:\t${issue.label}
+
+-- Description --
+${issue.description || '(No description provided)'}
+`;
+        }
+
+        if (issueAction === 'close') {
+          const targetNum = parseInt(positional[1] || positional[0] || '1', 10);
+          const issue = (this.state.issues || []).find(i => i.number === targetNum);
+          if (!issue) return `error: issue #${targetNum} not found`;
+          this.closeIssue(issue.id, author);
+          return `✓ Closed issue #${issue.number} ("${issue.title}")`;
+        }
+
+        return `gh: unknown issue command '${issueAction}'. Run "help" for details.`;
+      }
+
+      return `gh: '${group}' is not a recognized command. Run "help" for a list of available GitHub CLI commands.`;
+    }
+
+    // --- Standard Git Commands ---
+    if (!trimmed.startsWith('git ') && trimmed !== 'git') {
+      return `bash: ${tokens[0]}: command not found. Type "help" for a list of available commands.`;
+    }
+
+    const sub = (tokens[1] || 'status').toLowerCase();
+    const args = tokens.slice(2);
 
     switch (sub) {
       case 'status': {
@@ -548,9 +819,9 @@ Supported Commands:
       }
 
       case 'add': {
-        const target = parts[1];
+        const target = args[0];
         if (!target) return 'Nothing specified, nothing added.\nMaybe you wanted to say "git add ."?';
-        if (target === '.' || target === '-A') {
+        if (target === '.' || target === '-A' || target === '--all') {
           const res = this.stageAll(author);
           return `Staged ${res.count} file(s).`;
         }
@@ -559,80 +830,91 @@ Supported Commands:
       }
 
       case 'commit': {
-        const mIndex = parts.indexOf('-m');
-        if (mIndex === -1 || !parts[mIndex + 1]) {
+        const mIndex = args.indexOf('-m');
+        if (mIndex === -1 || !args[mIndex + 1]) {
           return 'error: switch `m\' requires a value\nUsage: git commit -m "commit message"';
         }
-        const msg = parts.slice(mIndex + 1).join(' ').replace(/^["']|["']$/g, '');
+        const msg = args[mIndex + 1];
         const res = this.commit(msg, author);
         return res.message;
       }
 
       case 'branch': {
-        if (parts.length === 1 || parts[1] === '-a') {
+        if (args.length === 0 || args[0] === '-a') {
           let out = '';
           for (const b of Object.keys(this.state.branches)) {
             if (b === this.state.currentBranch) {
-              out += `* ${b}\n`;
+              out += `* \x1b[32m${b}\x1b[0m\n`;
             } else {
               out += `  ${b}\n`;
             }
           }
-          if (parts[1] === '-a') {
+          if (args[0] === '-a') {
             for (const rb of Object.keys(this.state.remoteBranches)) {
               out += `  remotes/origin/${rb}\n`;
             }
           }
           return out;
         }
-        if (parts[1] === '-d' || parts[1] === '-D') {
-          const targetBranch = parts[2];
+        if (args[0] === '-d' || args[0] === '-D') {
+          const targetBranch = args[1];
           if (!targetBranch) return 'fatal: branch name required for delete';
           const delRes = this.deleteBranch(targetBranch, author);
           return delRes.message;
         }
-        const branchName = parts[1];
+        const branchName = args[0];
         const res = this.createBranch(branchName, author);
         return res.message;
       }
 
       case 'switch':
       case 'checkout': {
-        if (parts[1] === '-b' || parts[1] === '-c') {
-          const newName = parts[2];
+        if (args[0] === '-b' || args[0] === '-c') {
+          const newName = args[1];
           if (!newName) return 'fatal: missing branch name';
           const createRes = this.createBranch(newName, author);
-          if (!createRes.success) return createRes.message;
+          if (!createRes.success && !createRes.message.includes('already exists')) return createRes.message;
           this.switchBranch(newName, author);
           return `Switched to a new branch '${newName}'`;
         }
-        const targetBranch = parts[1];
+        const targetBranch = args[0];
         if (!targetBranch) return 'fatal: missing branch name';
         const res = this.switchBranch(targetBranch, author);
         return res.message;
       }
 
       case 'push': {
-        const targetBranch = parts[2] || this.state.currentBranch;
+        // Handle git push, git push origin <branch>, git push -u origin <branch>
+        let targetBranch = this.state.currentBranch;
+        for (let i = 0; i < args.length; i++) {
+          if (args[i] !== 'origin' && !args[i].startsWith('-')) {
+            targetBranch = args[i];
+          }
+        }
         const res = this.push(targetBranch, author);
         return res.message;
       }
 
       case 'pull': {
-        const targetBranch = parts[2] || this.state.currentBranch;
+        let targetBranch = this.state.currentBranch;
+        for (let i = 0; i < args.length; i++) {
+          if (args[i] !== 'origin' && !args[i].startsWith('-')) {
+            targetBranch = args[i];
+          }
+        }
         const res = this.pull(targetBranch, author);
         return res.message;
       }
 
       case 'merge': {
-        const sourceBranch = parts[1];
+        const sourceBranch = args[0];
         if (!sourceBranch) return 'fatal: No source branch specified to merge.';
         const res = this.triggerBranchMerge(sourceBranch, this.state.currentBranch, author);
         return res.message;
       }
 
       case 'log': {
-        const oneline = parts.includes('--oneline');
+        const oneline = args.includes('--oneline');
         let out = '';
         this.state.commits.slice(0, 10).forEach(c => {
           if (oneline) {
@@ -656,8 +938,40 @@ Supported Commands:
         return out || 'No differences between working directory and staging index.';
       }
 
+      case 'remote': {
+        if (args.includes('-v')) {
+          return `origin  https://github.com/open-sourcery/${this.state.name}.git (fetch)\norigin  https://github.com/open-sourcery/${this.state.name}.git (push)`;
+        }
+        return 'origin';
+      }
+
+      case 'clone': {
+        const url = args[0] || 'https://github.com/open-sourcery/' + this.state.name + '.git';
+        return `Cloning into '${this.state.name}'...\nremote: Enumerating objects: 38, done.\nremote: Counting objects: 100% (38/38), done.\nremote: Compressing objects: 100% (26/26), done.\nReceiving objects: 100% (38/38), 12.45 KiB | 2.49 MiB/s, done.`;
+      }
+
+      case 'fetch': {
+        return `From https://github.com/open-sourcery/${this.state.name}\n * [up to date]      main     -> origin/main`;
+      }
+
+      case 'restore': {
+        const file = args[args.length - 1];
+        if (!file) return 'fatal: you must specify path(s) to restore';
+        if (args.includes('--staged')) {
+          delete this.state.stagedFiles[file];
+          return `Unstaged changes in '${file}'`;
+        }
+        return `Restored '${file}' to working tree`;
+      }
+
+      case 'show': {
+        const c = this.state.commits[0];
+        if (!c) return 'No commits yet.';
+        return `commit ${c.id}\nAuthor: ${c.author}\nDate:   ${new Date(c.timestamp).toISOString()}\n\n    ${c.message}\n\nDiff:\n  ${Object.keys(c.files || {}).length} file(s) in snapshot`;
+      }
+
       default:
-        return `git: '${sub}' is not a recognized git command. Type "help" for a list.`;
+        return `git: '${sub}' is not a recognized git command. Type "help" for a list of available commands.`;
     }
   }
 

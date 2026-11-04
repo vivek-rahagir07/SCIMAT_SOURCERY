@@ -133,14 +133,27 @@ if (updatedPart.verifiedXP !== 900) {
   throw new Error(`Expected 900 XP, got ${updatedPart.verifiedXP}`);
 }
 
-// 5. Test Focus Violation recording
+// 5. Test Focus Violation & Out-of-Game Disqualification
 SessionStore.recordParticipantViolation('session-demo', regRes.participant.id, 'Window minimized');
-SessionStore.recordParticipantViolation('session-demo', regRes.participant.id, 'Tab switch');
+SessionStore.disqualifyParticipant('session-demo', regRes.participant.id, 'Switched tab during sprint');
 const partWithViolations = SessionStore.getParticipant('session-demo', regRes.participant.id);
 console.log('Focus violations logged:', partWithViolations.focusViolations);
-if (partWithViolations.focusViolations !== 2) {
-  throw new Error('Focus violations tracking failed');
+console.log('Is disqualified (Out of game):', partWithViolations.isDisqualified, 'Reason:', partWithViolations.disqualifiedReason);
+if (!partWithViolations.isDisqualified) {
+  throw new Error('Disqualification failed');
 }
+
+// Check leaderboard status reflects OUT OF GAME
+const disqLeaderboard = SessionStore.getLeaderboard('session-demo');
+const disqEntry = disqLeaderboard.find(e => e.name === 'Aarav Sharma');
+console.log('Leaderboard entry isDisqualified:', disqEntry.isDisqualified);
+if (!disqEntry.isDisqualified) throw new Error('Leaderboard did not reflect disqualification');
+
+// Test Admin Reinstatement
+SessionStore.reinstateParticipant('session-demo', regRes.participant.id);
+const reinstatedPart = SessionStore.getParticipant('session-demo', regRes.participant.id);
+console.log('Reinstated participant isDisqualified:', reinstatedPart.isDisqualified);
+if (reinstatedPart.isDisqualified) throw new Error('Reinstatement failed');
 
 // 6. Test Leaderboard
 const leaderboard = SessionStore.getLeaderboard('session-demo');

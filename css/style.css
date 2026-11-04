@@ -1841,3 +1841,11 @@ input:focus, textarea:focus, select:focus {
 .dossier-item-card:hover {
   border-color: rgba(54, 228, 212, 0.4);
 }
+
+@keyframes shakeModal {
+  0% { transform: scale(0.95); }
+  25% { transform: scale(1.02) translateX(-6px); }
+  50% { transform: scale(1) translateX(6px); }
+  75% { transform: scale(1.01) translateX(-3px); }
+  100% { transform: scale(1) translateX(0); }
+}
