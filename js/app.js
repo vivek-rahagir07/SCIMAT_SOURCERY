@@ -180,6 +180,16 @@ function submitOnboardingRegistration(e) {
   const part = regResult.participant;
   currentContributor = name;
 
+  // Reset in-memory interaction history so prior participant's temporary state does not leak!
+  interactionHistory = {
+    contributor: name,
+    hasViewedReadme: false,
+    viewedBranch: null,
+    createdBranches: [],
+    pushedBranches: [],
+    authoredCommits: []
+  };
+
   // Mark registered
   localStorage.setItem('open_sourcery_user_registered', 'true');
   localStorage.setItem('open_sourcery_user_email', email);
@@ -344,10 +354,6 @@ function switchTab(tabId) {
 
   if (tabId === 'code') {
     renderCodeTab();
-    if (currentViewingFile === 'README.md' && (!git || git.getState().currentBranch === 'main')) {
-      interactionHistory.hasViewedReadme = true;
-      interactionHistory.viewedBranch = 'main';
-    }
   }
   if (tabId === 'issues') renderIssuesTab();
   if (tabId === 'pullRequests') renderPRsTab();
@@ -594,6 +600,14 @@ function toggleContributorDropdown() {
 function selectContributor(name) {
   SessionStore.setActiveContributor(name);
   currentContributor = name;
+  interactionHistory = {
+    contributor: name,
+    hasViewedReadme: false,
+    viewedBranch: null,
+    createdBranches: [],
+    pushedBranches: [],
+    authoredCommits: []
+  };
   updateContributorUI();
   const menu = document.getElementById('contributor-dropdown-menu');
   if (menu) menu.style.display = 'none';
@@ -829,11 +843,6 @@ function renderFileViewer() {
   const container = document.getElementById('file-viewer-section');
   if (!container) return;
 
-  if (currentViewingFile === 'README.md' && (!git || git.getState().currentBranch === 'main')) {
-    interactionHistory.hasViewedReadme = true;
-    interactionHistory.viewedBranch = 'main';
-  }
-
   const content = (state.files && state.files[currentViewingFile]) || '';
   const isHtml = currentViewingFile.endsWith('.html');
 
@@ -1009,6 +1018,9 @@ function commitChanges() {
 
   const res = git.commit(msgInput.value.trim(), currentContributor);
   if (res.success) {
+    if (res.commit && res.commit.id && interactionHistory && interactionHistory.authoredCommits) {
+      interactionHistory.authoredCommits.push(res.commit.id);
+    }
     msgInput.value = '';
     saveActiveRepository();
     renderAll();
@@ -1021,6 +1033,12 @@ function commitChanges() {
 
 function pushToOrigin() {
   const res = git.push(git.getState().currentBranch, currentContributor);
+  if (res.success && interactionHistory && interactionHistory.pushedBranches) {
+    const bName = git.getState().currentBranch;
+    if (!interactionHistory.pushedBranches.includes(bName)) {
+      interactionHistory.pushedBranches.push(bName);
+    }
+  }
   saveActiveRepository();
   renderAll();
   showToast(`[${currentContributor}] Pushed branch to remote origin`, 'success');
@@ -1083,6 +1101,10 @@ function submitNewBranch(e) {
 
   const res = git.createBranch(name, currentContributor);
   if (res.success) {
+    const cleanB = name.trim().replace(/\s+/g, '-');
+    if (interactionHistory && interactionHistory.createdBranches && !interactionHistory.createdBranches.includes(cleanB)) {
+      interactionHistory.createdBranches.push(cleanB);
+    }
     git.switchBranch(name, currentContributor);
     saveActiveRepository();
     renderAll();
@@ -2041,11 +2063,12 @@ function triggerBadgeUnlockCelebration(missionId, xpAwarded, totalXP) {
 function manualVerifyMission(missionId) {
   if (!git) return;
   const state = git.getState();
-  const res = MissionValidator.validateMission(missionId, state, interactionHistory);
+  const curPart = SessionStore.getCurrentParticipant('session-demo') || SessionStore.getParticipantByName('session-demo', currentContributor);
+  const partId = curPart ? curPart.id : currentContributor;
+  const contributorName = (curPart && curPart.name) ? curPart.name : currentContributor;
+  const res = MissionValidator.validateMission(missionId, state, interactionHistory, contributorName);
 
   if (res.isCompleted) {
-    const curPart = SessionStore.getCurrentParticipant('session-demo') || SessionStore.getParticipantByName('session-demo', currentContributor);
-    const partId = curPart ? curPart.id : currentContributor;
     const awardRes = SessionStore.awardMission('session-demo', partId, missionId, res.evidence);
 
     const card = document.getElementById(`card-${missionId}`);
@@ -2072,6 +2095,7 @@ function checkAllMissions() {
   const state = git.getState();
   const curPart = SessionStore.getCurrentParticipant('session-demo') || SessionStore.getParticipantByName('session-demo', currentContributor);
   const partId = curPart ? curPart.id : currentContributor;
+  const contributorName = (curPart && curPart.name) ? curPart.name : currentContributor;
 
   let anyNewAward = false;
   let newlyAwardedMissionId = null;
@@ -2079,7 +2103,7 @@ function checkAllMissions() {
   let newlyTotalXP = 0;
 
   for (const m of DEFAULT_MISSIONS) {
-    const res = MissionValidator.validateMission(m.id, state, interactionHistory);
+    const res = MissionValidator.validateMission(m.id, state, interactionHistory, contributorName);
     if (res.isCompleted) {
       const awardRes = SessionStore.awardMission('session-demo', partId, m.id, res.evidence);
       const card = document.getElementById(`card-${m.id}`);
