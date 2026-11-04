@@ -166,11 +166,35 @@
     try {
       await restDelete(`sessions/${sessionId}/participants`);
       await restDelete(`sessions/${sessionId}/leaderboard`);
+      await restDelete(`sessions/${sessionId}/otps`);
       if (typeof window.refreshLiveLeaderboardNow === 'function') {
         window.refreshLiveLeaderboardNow(sessionId);
       }
     } catch (e) {
       console.warn('Firebase wipe error:', e);
+    }
+  };
+
+  // 3c. Sync OTP to Cloud
+  window.syncOtpToCloud = async function(sessionId, email, otp, name) {
+    if (!sessionId || !email) return;
+    const cleanKey = email.toLowerCase().replace(/[^a-z0-9]/g, '_');
+    await restPut(`sessions/${sessionId}/otps/${cleanKey}`, {
+      email,
+      name,
+      otp,
+      createdAt: Date.now()
+    });
+  };
+
+  // 3d. Fetch Active Cloud OTPs for Admin
+  window.fetchCloudOtps = async function(sessionId = 'session-demo') {
+    try {
+      const raw = await restGet(`sessions/${sessionId}/otps`);
+      if (!raw || typeof raw !== 'object') return [];
+      return Object.values(raw).filter(item => item && item.otp);
+    } catch {
+      return [];
     }
   };
 
