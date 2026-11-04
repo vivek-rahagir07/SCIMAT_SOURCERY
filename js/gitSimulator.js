@@ -230,9 +230,19 @@ class GitSimulator {
       return { success: false, message: `fatal: cannot merge branch '${sourceBranch}' into itself` };
     }
 
-    const isConflictCase =
+    let isConflictCase =
       (sourceBranch === 'feature/welcome' && targetBranch === 'main') ||
-      (sourceBranch === 'main' && targetBranch === 'feature/welcome');
+      (sourceBranch === 'main' && targetBranch === 'feature/welcome') ||
+      sourceBranch.toLowerCase().includes('conflict') ||
+      targetBranch.toLowerCase().includes('conflict');
+
+    const sCommitId = this.state.branches[sourceBranch];
+    const sCommit = this.state.commits.find(c => c.id === sCommitId);
+    if (!isConflictCase && sCommit && sCommit.files && sCommit.files['index.html'] && this.state.files['index.html']) {
+      if (sCommit.files['index.html'] !== this.state.files['index.html']) {
+        isConflictCase = true;
+      }
+    }
 
     if (isConflictCase) {
       const baseContent = '    <h1>Welcome to BMU</h1>';

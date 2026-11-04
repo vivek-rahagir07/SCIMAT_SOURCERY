@@ -2254,8 +2254,8 @@ input:focus, textarea:focus, select:focus {
 /* Responsive Split Layout */
 @media (max-width: 1040px) {
   .onboarding-split-container {
-    flex-direction: column-reverse;
-    gap: 2.5rem;
+    flex-direction: column;
+    gap: 2rem;
     padding: 1rem 0;
   }
   .onboarding-split-left,

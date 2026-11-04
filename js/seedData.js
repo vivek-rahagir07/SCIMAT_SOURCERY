@@ -1278,6 +1278,24 @@ function createInitialRepository(creator = 'Vivek') {
     diffSummary: { filesChanged: Object.keys(INITIAL_FILES).length, insertions: 120, deletions: 0 }
   };
 
+  const welcomeCommitId = Math.random().toString(16).substring(2, 9);
+  const welcomeFiles = { ...INITIAL_FILES };
+  if (welcomeFiles['index.html']) {
+    welcomeFiles['index.html'] = welcomeFiles['index.html'].replace('<h1>Welcome to BMU</h1>', '<h1>Hello Students</h1>');
+  }
+
+  const welcomeCommit = {
+    id: welcomeCommitId,
+    shortId: welcomeCommitId,
+    parentId: commitId,
+    message: 'feat(hero): update welcome heading for students',
+    author: 'Alex Rivera <alex@opensourcery.dev>',
+    timestamp: timestamp - 1800000,
+    branch: 'feature/welcome',
+    files: welcomeFiles,
+    diffSummary: { filesChanged: 1, insertions: 1, deletions: 1 }
+  };
+
   return {
     id: 'repo-college-website',
     name: 'college-website',
@@ -1292,12 +1310,14 @@ function createInitialRepository(creator = 'Vivek') {
     files: { ...INITIAL_FILES },
     stagedFiles: {},
     branches: {
-      'main': initialCommit.id
+      'main': initialCommit.id,
+      'feature/welcome': welcomeCommit.id
     },
     remoteBranches: {
-      'main': initialCommit.id
+      'main': initialCommit.id,
+      'feature/welcome': welcomeCommit.id
     },
-    commits: [initialCommit],
+    commits: [initialCommit, welcomeCommit],
     issues: [],
     pullRequests: [],
     activeConflict: null,
@@ -1311,7 +1331,7 @@ function createInitialRepository(creator = 'Vivek') {
         timestamp
       }
     ],
-    contributors: [creator]
+    contributors: [creator, 'Alex Rivera']
   };
 }
 
