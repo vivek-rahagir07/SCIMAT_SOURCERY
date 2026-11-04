@@ -161,6 +161,19 @@
     window.refreshLiveLeaderboardNow();
   };
 
+  // 3b. Wipe All Cloud Data for Session
+  window.clearAllCloudData = async function(sessionId = 'session-demo') {
+    try {
+      await restDelete(`sessions/${sessionId}/participants`);
+      await restDelete(`sessions/${sessionId}/leaderboard`);
+      if (typeof window.refreshLiveLeaderboardNow === 'function') {
+        window.refreshLiveLeaderboardNow(sessionId);
+      }
+    } catch (e) {
+      console.warn('Firebase wipe error:', e);
+    }
+  };
+
   // 4. Sync Leaderboard
   window.syncLeaderboardToCloud = async function(sessionId, leaderboard) {
     if (!sessionId || !Array.isArray(leaderboard)) return;

@@ -10,21 +10,26 @@ const channel = typeof window !== 'undefined' && 'BroadcastChannel' in window
 
 class SessionStore {
   static checkAndMigrateCleanState() {
-    const CLEAN_VERSION = 'v4_rich_codebase';
+    const CLEAN_VERSION = 'v6_workshop_zero_slate';
     if (typeof localStorage === 'undefined') return;
     const currentVersion = localStorage.getItem(`${STORAGE_PREFIX}schema_version`);
     if (currentVersion !== CLEAN_VERSION) {
-      // Clear legacy dummy/mock repository data, old mock users, and mock PRs/issues
-      const keysToRemove = [];
-      for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (key && key.startsWith(STORAGE_PREFIX)) {
-          keysToRemove.push(key);
-        }
-      }
-      keysToRemove.forEach(k => localStorage.removeItem(k));
+      // Clear all legacy mock data, test participants, previous attempts, and start 100% clean
+      this.wipeAllData();
       localStorage.setItem(`${STORAGE_PREFIX}schema_version`, CLEAN_VERSION);
     }
+  }
+
+  static wipeAllData() {
+    if (typeof localStorage === 'undefined') return;
+    const keysToRemove = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && (key.startsWith(STORAGE_PREFIX) || key.startsWith('open_sourcery_'))) {
+        keysToRemove.push(key);
+      }
+    }
+    keysToRemove.forEach(k => localStorage.removeItem(k));
   }
 
   static initDefaultSession() {

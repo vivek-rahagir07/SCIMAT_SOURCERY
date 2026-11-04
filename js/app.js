@@ -1047,48 +1047,65 @@ function stageAllFiles() {
   showToast('Staged all files for commit', 'success');
 }
 
-function commitChanges() {
-  const msgInput = document.getElementById('commit-msg-input');
-  if (!msgInput || !msgInput.value.trim()) {
-    showToast('Please enter a commit message!', 'error');
-    return;
+function openTerminalWithCommand(cmd, title, tip) {
+  const term = document.getElementById('terminal-container');
+  if (term) term.classList.remove('minimized');
+
+  const body = document.getElementById('terminal-body');
+  if (body) {
+    const tipDiv = document.createElement('div');
+    tipDiv.style.cssText = 'margin: 0.6rem 0; padding: 0.65rem 0.85rem; background: rgba(56, 189, 248, 0.12); border-left: 3px solid #38bdf8; border-radius: 4px; font-family: var(--font-mono); font-size: 0.82rem; color: #bae6fd; animation: fadeIn 0.3s ease;';
+    tipDiv.innerHTML = `
+      <div style="font-weight: 700; color: #38bdf8; margin-bottom: 0.25rem;">💡 Learn Git CLI: ${escapeHtml(title)}</div>
+      <div style="color: #94a3b8; font-size: 0.76rem; margin-bottom: 0.4rem;">${escapeHtml(tip)}</div>
+      <div style="color: #e2e8f0; font-size: 0.8rem;">Command loaded in prompt below. Press <strong style="color: #38bdf8; background: rgba(56, 189, 248, 0.2); padding: 0.1rem 0.35rem; border-radius: 3px;">Enter ↵</strong> to run:</div>
+    `;
+    body.appendChild(tipDiv);
+    body.scrollTop = body.scrollHeight;
   }
 
-  const res = git.commit(msgInput.value.trim(), currentContributor);
-  if (res.success) {
-    if (res.commit && res.commit.id && interactionHistory && interactionHistory.authoredCommits) {
-      interactionHistory.authoredCommits.push(res.commit.id);
-    }
-    msgInput.value = '';
-    saveActiveRepository();
-    renderAll();
-    showToast(`[${currentContributor}] Committed: ${res.commit.message}`, 'success');
-    checkAllMissions();
-  } else {
-    showToast(res.message, 'error');
+  const input = document.getElementById('terminal-cli-input');
+  if (input) {
+    input.value = cmd;
+    input.focus();
+    input.selectionStart = input.selectionEnd = cmd.length;
   }
+
+  showToast(`Terminal prompt ready: ${cmd}. Press Enter to execute!`, 'info');
+}
+
+function commitChanges() {
+  const msgInput = document.getElementById('commit-msg-input');
+  const msg = (msgInput ? msgInput.value.trim() : '') || 'feat: update project files';
+
+  // Open interactive terminal and guide participant to execute git commit
+  openTerminalWithCommand(
+    `git commit -m "${msg}"`,
+    'Make a Commit (git commit)',
+    `To commit your staged changes, Git requires running "git commit -m \\"<message>\\"". Press Enter to complete your commit!`
+  );
 }
 
 function pushToOrigin() {
-  const res = git.push(git.getState().currentBranch, currentContributor);
-  if (res.success && interactionHistory && interactionHistory.pushedBranches) {
-    const bName = git.getState().currentBranch;
-    if (!interactionHistory.pushedBranches.includes(bName)) {
-      interactionHistory.pushedBranches.push(bName);
-    }
-  }
-  saveActiveRepository();
-  renderAll();
-  showToast(`[${currentContributor}] Pushed branch to remote origin`, 'success');
-  checkAllMissions();
+  const branch = (git ? git.getState().currentBranch : 'main');
+
+  // Open interactive terminal and guide participant to execute git push
+  openTerminalWithCommand(
+    `git push origin ${branch}`,
+    'Push to Remote (git push)',
+    `To upload your commits to remote origin, run "git push origin <branch>". Press Enter to push now!`
+  );
 }
 
 function pullFromOrigin() {
-  const res = git.pull(git.getState().currentBranch, currentContributor);
-  saveActiveRepository();
-  renderAll();
-  showToast(res.message, 'success');
-  checkAllMissions();
+  const branch = (git ? git.getState().currentBranch : 'main');
+
+  // Open interactive terminal and guide participant to execute git pull
+  openTerminalWithCommand(
+    `git pull origin ${branch}`,
+    'Pull Remote Changes (git pull)',
+    `To fetch and merge latest remote commits into '${branch}', run "git pull origin <branch>". Press Enter to pull now!`
+  );
 }
 
 // --- Branch Management ---
@@ -1930,6 +1947,31 @@ function executeTerminalCommand(cmd) {
   }
 
   const output = git.executeCLI(cmd, currentContributor);
+
+  // Track terminal actions in interactionHistory
+  if (/^git\s+commit/i.test(trimmed)) {
+    const headCommitId = git.getState().branches[git.getState().currentBranch];
+    if (headCommitId && !interactionHistory.authoredCommits.includes(headCommitId)) {
+      interactionHistory.authoredCommits.push(headCommitId);
+    }
+    const msgInput = document.getElementById('commit-msg-input');
+    if (msgInput) msgInput.value = '';
+  }
+  if (/^git\s+push/i.test(trimmed)) {
+    const bName = git.getState().currentBranch;
+    if (!interactionHistory.pushedBranches.includes(bName)) {
+      interactionHistory.pushedBranches.push(bName);
+    }
+  }
+  if (/^git\s+(?:branch|checkout\s+-b|switch\s+-c)\s+([^\s]+)/i.test(trimmed)) {
+    const match = trimmed.match(/^git\s+(?:branch|checkout\s+-b|switch\s+-c)\s+([^\s]+)/i);
+    if (match && match[1] && !match[1].startsWith('-')) {
+      const bName = match[1].replace(/['"]/g, '');
+      if (!interactionHistory.createdBranches.includes(bName)) {
+        interactionHistory.createdBranches.push(bName);
+      }
+    }
+  }
 
   if (output === '__CLEAR__') {
     if (body) body.innerHTML = '';
@@ -3174,14 +3216,19 @@ function exportLeaderboardCSV() {
 
 function resetAllWorkshopData() {
   showConfirmDialog({
-    title: 'Reset Workshop Repository',
-    message: 'Are you sure you want to reset all repository changes, commits, and activity? All uncommitted edits will be discarded.',
-    confirmText: 'Reset Repository',
+    title: '⚠️ Wipe & Reset All Workshop Arena Data?',
+    message: 'This will completely remove ALL registered participants, scores, previous attempts, and wipe the live leaderboard clean for everyone. This cannot be undone.',
+    confirmText: 'Yes, Wipe Everything',
     confirmClass: 'btn-danger',
-    icon: '⚠️',
-    onConfirm: () => {
+    icon: '🗑️',
+    onConfirm: async () => {
+      SessionStore.wipeAllData();
       localStorage.clear();
-      location.reload();
+      if (typeof window.clearAllCloudData === 'function') {
+        await window.clearAllCloudData('session-demo');
+      }
+      showToast('All arena and leaderboard data wiped clean! Reloading...', 'success');
+      setTimeout(() => location.reload(), 1000);
     }
   });
 }
