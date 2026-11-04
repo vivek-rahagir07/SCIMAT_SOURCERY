@@ -494,7 +494,7 @@ function updateContributorUI() {
         `).join('')}
       </div>
       <div style="padding: 0.5rem; background: var(--bg-tertiary); border-top: 1px solid var(--border-color); display: flex; flex-direction: column; gap: 0.35rem;">
-        <button class="btn btn-sm btn-cyan" style="width: 100%; justify-content: center;" onclick="promptNewContributor()">+ Add New Contributor</button>
+        <button class="btn btn-sm btn-cyan" style="width: 100%; justify-content: center;" onclick="openNewContributorModal()">+ Add New Contributor</button>
         <button class="btn btn-sm" style="width: 100%; justify-content: center;" onclick="openOnboardingModal()">📝 Switch Participant / Register</button>
         <button class="btn btn-sm btn-danger" style="width: 100%; justify-content: center; margin-top: 0.2rem;" onclick="logoutParticipant()">🚪 Logout Current Participant</button>
       </div>
@@ -516,18 +516,41 @@ function selectContributor(name) {
   showToast(`Switched active contributor to: ${name}`, 'info');
 }
 
-function promptNewContributor() {
+function openNewContributorModal() {
   const menu = document.getElementById('contributor-dropdown-menu');
   if (menu) menu.style.display = 'none';
 
-  const name = prompt('Enter contributor name (e.g. Vivek, Sarah, or your name):');
-  if (!name || !name.trim()) return;
+  const nameInput = document.getElementById('new-contributor-name-input');
+  const rollInput = document.getElementById('new-contributor-roll-input');
+  if (nameInput) {
+    nameInput.value = '';
+    setTimeout(() => nameInput.focus(), 50);
+  }
+  if (rollInput) rollInput.value = '';
+  openModal('new-contributor-modal');
+}
 
-  const roll = prompt('Enter roll number / student ID (optional):') || 'STUDENT';
-  SessionStore.addCustomContributor(name, roll, '');
-  currentContributor = name.trim();
+function submitNewContributor(e) {
+  if (e && e.preventDefault) e.preventDefault();
+  const nameInput = document.getElementById('new-contributor-name-input');
+  const rollInput = document.getElementById('new-contributor-roll-input');
+  const name = nameInput ? nameInput.value.trim() : '';
+  const roll = rollInput ? rollInput.value.trim() : '';
+
+  if (!name) {
+    showToast('Please enter a contributor name', 'error');
+    return;
+  }
+
+  SessionStore.addCustomContributor(name, roll || 'STUDENT', '');
+  currentContributor = name;
   updateContributorUI();
+  closeModal('new-contributor-modal');
   showToast(`Added and switched to ${name}!`, 'success');
+}
+
+function promptNewContributor() {
+  openNewContributorModal();
 }
 
 // --- Badges & Conflict Banner ---
@@ -593,7 +616,7 @@ function renderCodeTab() {
     });
     html += `
       <div style="padding: 0.5rem; border-top: 1px solid var(--border-color);">
-        <button class="btn btn-sm btn-cyan" style="width: 100%; justify-content: center;" onclick="promptNewBranch()">+ New Branch</button>
+        <button class="btn btn-sm btn-cyan" style="width: 100%; justify-content: center;" onclick="openNewBranchModal()">+ New Branch</button>
       </div>
     `;
     branchListContainer.innerHTML = html;
@@ -827,14 +850,21 @@ function saveEditingFile() {
 }
 
 function deleteFilePrompt(path) {
-  if (confirm(`Are you sure you want to delete '${path}' from this branch?`)) {
-    git.deleteFile(path, currentContributor);
-    saveActiveRepository();
-    const remainingFiles = Object.keys(git.getState().files);
-    currentViewingFile = remainingFiles[0] || '';
-    renderAll();
-    showToast(`Removed ${path} (staged for commit)`, 'info');
-  }
+  showConfirmDialog({
+    title: 'Delete File',
+    message: `Are you sure you want to delete '${path}' from this branch?`,
+    confirmText: 'Delete File',
+    confirmClass: 'btn-danger',
+    icon: '🗑️',
+    onConfirm: () => {
+      git.deleteFile(path, currentContributor);
+      saveActiveRepository();
+      const remainingFiles = Object.keys(git.getState().files);
+      currentViewingFile = remainingFiles[0] || '';
+      renderAll();
+      showToast(`Removed ${path} (staged for commit)`, 'info');
+    }
+  });
 }
 
 // --- Add File Flow ---
@@ -937,21 +967,46 @@ function closeBranchDropdown() {
   if (menu) menu.style.display = 'none';
 }
 
-function promptNewBranch() {
+function openNewBranchModal() {
   closeBranchDropdown();
-  const name = prompt('Enter new branch name (e.g. fix/readme-command or feature/my-feature):');
-  if (!name) return;
+  const currentBranch = git ? git.getState().currentBranch : 'main';
+  const baseDisplay = document.getElementById('new-branch-base-display');
+  if (baseDisplay) baseDisplay.textContent = currentBranch;
+
+  const input = document.getElementById('new-branch-name-input');
+  if (input) {
+    input.value = '';
+    setTimeout(() => input.focus(), 50);
+  }
+  openModal('new-branch-modal');
+}
+
+function submitNewBranch(e) {
+  if (e && e.preventDefault) e.preventDefault();
+  const input = document.getElementById('new-branch-name-input');
+  if (!input) return;
+
+  const name = input.value.trim();
+  if (!name) {
+    showToast('Please enter a branch name', 'error');
+    return;
+  }
 
   const res = git.createBranch(name, currentContributor);
   if (res.success) {
     git.switchBranch(name, currentContributor);
     saveActiveRepository();
     renderAll();
+    closeModal('new-branch-modal');
     showToast(`Created & switched to branch '${name}'`, 'success');
     checkAllMissions();
   } else {
     showToast(res.message, 'error');
   }
+}
+
+function promptNewBranch() {
+  openNewBranchModal();
 }
 
 // --- Activity / Pulse Tab ---
@@ -1491,16 +1546,23 @@ function renderBranchesTab() {
 }
 
 function deleteBranchAction(branchName) {
-  if (confirm(`Are you sure you want to delete branch '${branchName}'?`)) {
-    const res = git.deleteBranch(branchName, currentContributor);
-    if (res.success) {
-      saveActiveRepository();
-      renderAll();
-      showToast(res.message, 'info');
-    } else {
-      showToast(res.message, 'error');
+  showConfirmDialog({
+    title: 'Delete Branch',
+    message: `Are you sure you want to delete branch '${branchName}'? This action removes the branch pointer from this repository.`,
+    confirmText: 'Delete Branch',
+    confirmClass: 'btn-danger',
+    icon: '🌿',
+    onConfirm: () => {
+      const res = git.deleteBranch(branchName, currentContributor);
+      if (res.success) {
+        saveActiveRepository();
+        renderAll();
+        showToast(res.message, 'info');
+      } else {
+        showToast(res.message, 'error');
+      }
     }
-  }
+  });
 }
 
 function mergeBranchDirect(sourceBranch) {
@@ -2459,32 +2521,62 @@ function switchContributorTo(name) {
 }
 
 function adminRemoveParticipant(participantId, name) {
-  if (!confirm(`Are you sure you want to remove and disqualify "${name}" from the workshop and leaderboard? This action cannot be undone.`)) {
-    return;
-  }
-  SessionStore.removeParticipant('session-demo', participantId);
-  closeModal('participant-dossier-modal');
-  updateLeaderboardUI();
-  updateAdminUI();
-  updateContributorUI();
-  showToast(`Participant "${name}" was removed from the leaderboard.`, 'success');
+  showConfirmDialog({
+    title: 'Disqualify Participant',
+    message: `Are you sure you want to remove and disqualify "${name}" from the workshop and leaderboard? This action cannot be undone.`,
+    confirmText: 'Disqualify Participant',
+    confirmClass: 'btn-danger',
+    icon: '🚫',
+    onConfirm: () => {
+      SessionStore.removeParticipant('session-demo', participantId);
+      closeModal('participant-dossier-modal');
+      updateLeaderboardUI();
+      updateAdminUI();
+      updateContributorUI();
+      showToast(`Participant "${name}" was removed from the leaderboard.`, 'success');
+    }
+  });
 }
+
+let adjustXPParticipantId = null;
+let adjustXPParticipantName = null;
 
 function adminPromptAdjustXP(participantId, name) {
   const currentPart = SessionStore.getParticipant('session-demo', participantId) ||
                       SessionStore.getParticipantByName('session-demo', name);
   const currentXP = currentPart ? (currentPart.verifiedXP || 0) : 0;
 
-  const input = prompt(`Adjust XP for "${name}" (Currently: ${currentXP} XP).\nEnter delta amount (e.g. +50 to reward, -50 to penalize):`, '+50');
-  if (input === null || input.trim() === '') return;
+  adjustXPParticipantId = participantId;
+  adjustXPParticipantName = name;
 
-  const delta = parseInt(input.trim(), 10);
+  const descEl = document.getElementById('adjust-xp-modal-desc');
+  if (descEl) {
+    descEl.textContent = `Adjust XP for "${name}" (Current XP: ${currentXP}). Enter a positive number to reward (e.g. +50) or negative to penalize (e.g. -30).`;
+  }
+  const inputEl = document.getElementById('adjust-xp-delta-input');
+  if (inputEl) {
+    inputEl.value = '+50';
+    setTimeout(() => inputEl.focus(), 50);
+  }
+  openModal('admin-adjust-xp-modal');
+}
+
+function submitAdjustXP(e) {
+  if (e && e.preventDefault) e.preventDefault();
+  const inputEl = document.getElementById('adjust-xp-delta-input');
+  if (!inputEl) return;
+
+  const input = inputEl.value.trim();
+  const delta = parseInt(input, 10);
   if (isNaN(delta)) {
     showToast('Invalid XP value entered. Please enter a valid number (e.g. 50 or -50).', 'error');
     return;
   }
 
+  const participantId = adjustXPParticipantId;
+  const name = adjustXPParticipantName;
   const res = SessionStore.adjustParticipantXP('session-demo', participantId, delta);
+  closeModal('admin-adjust-xp-modal');
   if (res.success) {
     updateLeaderboardUI();
     updateAdminUI();
@@ -2585,10 +2677,17 @@ function exportLeaderboardCSV() {
 }
 
 function resetAllWorkshopData() {
-  if (confirm('Are you sure you want to reset all repository changes, commits, and activity?')) {
-    localStorage.clear();
-    location.reload();
-  }
+  showConfirmDialog({
+    title: 'Reset Workshop Repository',
+    message: 'Are you sure you want to reset all repository changes, commits, and activity? All uncommitted edits will be discarded.',
+    confirmText: 'Reset Repository',
+    confirmClass: 'btn-danger',
+    icon: '⚠️',
+    onConfirm: () => {
+      localStorage.clear();
+      location.reload();
+    }
+  });
 }
 
 let timerInterval = null;
@@ -2673,42 +2772,49 @@ function openOnboardingModal() {
 // --- Participant Logout ---
 
 function logoutParticipant() {
-  if (confirm('Are you sure you want to log out? Your sprint session will be cleared for the next participant.')) {
-    // Exit full-screen if active
-    if (document.fullscreenElement || document.webkitFullscreenElement) {
-      try {
-        if (document.exitFullscreen) document.exitFullscreen().catch(() => {});
-        else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
-      } catch {}
+  showConfirmDialog({
+    title: 'Participant Logout',
+    message: 'Are you sure you want to log out? Your sprint session will be cleared for the next participant.',
+    confirmText: 'Yes, Log Out',
+    confirmClass: 'btn-warning',
+    icon: '🚪',
+    onConfirm: () => {
+      // Exit full-screen if active
+      if (document.fullscreenElement || document.webkitFullscreenElement) {
+        try {
+          if (document.exitFullscreen) document.exitFullscreen().catch(() => {});
+          else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+        } catch {}
+      }
+
+      localStorage.removeItem('open_sourcery_user_registered');
+      localStorage.removeItem('open_sourcery_timer_start');
+      localStorage.removeItem('open_sourcery_tab_switch_count');
+      localStorage.removeItem('open_sourcery_user_email');
+
+      // Close any open modals
+      document.querySelectorAll('.modal-backdrop').forEach(m => m.classList.remove('open'));
+
+      // Reset countdown timer
+      const timerEl = document.getElementById('session-countdown');
+      if (timerEl) {
+        timerEl.textContent = '15:00';
+        timerEl.style.color = '';
+      }
+
+      // Display onboarding overlay
+      const overlay = document.getElementById('onboarding-overlay');
+      if (overlay) {
+        overlay.style.display = 'flex';
+        const nameInput = document.getElementById('onboarding-name-input');
+        const emailInput = document.getElementById('onboarding-email-input');
+        if (nameInput) nameInput.value = '';
+        if (emailInput) emailInput.value = '';
+      }
+
+      showToast('Logged out successfully. Welcome next participant!', 'info');
     }
-
-    localStorage.removeItem('open_sourcery_user_registered');
-    localStorage.removeItem('open_sourcery_timer_start');
-    localStorage.removeItem('open_sourcery_tab_switch_count');
-    localStorage.removeItem('open_sourcery_user_email');
-
-    // Close any open modals
-    document.querySelectorAll('.modal-backdrop').forEach(m => m.classList.remove('open'));
-
-    // Reset countdown timer
-    const timerEl = document.getElementById('session-countdown');
-    if (timerEl) {
-      timerEl.textContent = '15:00';
-      timerEl.style.color = '';
-    }
-
-    // Display onboarding overlay
-    const overlay = document.getElementById('onboarding-overlay');
-    if (overlay) {
-      overlay.style.display = 'flex';
-      const nameInput = document.getElementById('onboarding-name-input');
-      const emailInput = document.getElementById('onboarding-email-input');
-      if (nameInput) nameInput.value = '';
-      if (emailInput) emailInput.value = '';
-    }
-
-    showToast('Logged out successfully. Welcome next participant!', 'info');
-  }
+  });
 }
 
 // --- Fullscreen & Tab-Switch Protection Guards (Instant Disqualification) ---
@@ -2849,6 +2955,37 @@ function openModal(id) {
 function closeModal(id) {
   const modal = document.getElementById(id);
   if (modal) modal.classList.remove('open');
+}
+
+// In-Page Confirmation Dialog Helper (Never exits full-screen or causes blur)
+let confirmActionCallback = null;
+
+function showConfirmDialog({ title = 'Confirm Action', message, confirmText = 'Confirm', confirmClass = 'btn-danger', icon = '⚠️', onConfirm }) {
+  const modal = document.getElementById('confirm-action-modal');
+  if (!modal) {
+    if (typeof onConfirm === 'function') onConfirm();
+    return;
+  }
+  const titleEl = document.getElementById('confirm-modal-title');
+  if (titleEl) titleEl.innerHTML = `<span>${icon}</span><span>${title}</span>`;
+  const msgEl = document.getElementById('confirm-modal-message');
+  if (msgEl) msgEl.textContent = message;
+  const okBtn = document.getElementById('confirm-modal-ok-btn');
+  if (okBtn) {
+    okBtn.textContent = confirmText;
+    okBtn.className = `btn ${confirmClass}`;
+  }
+  confirmActionCallback = onConfirm;
+  openModal('confirm-action-modal');
+}
+
+function executeConfirmAction() {
+  closeModal('confirm-action-modal');
+  if (typeof confirmActionCallback === 'function') {
+    const cb = confirmActionCallback;
+    confirmActionCallback = null;
+    cb();
+  }
 }
 
 function showToast(message, type = 'info') {

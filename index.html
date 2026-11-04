@@ -251,7 +251,7 @@
             <!-- Branch Dropdown Menu -->
             <div id="branch-dropdown-menu" style="display: none; position: absolute; top: 105%; left: 0; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: var(--radius-md); box-shadow: var(--shadow-md); z-index: 30; width: 220px;"></div>
 
-            <button class="btn btn-sm" onclick="promptNewBranch()">+ New Branch</button>
+            <button class="btn btn-sm" onclick="openNewBranchModal()">+ New Branch</button>
             <button class="btn btn-sm" onclick="openAddFileModal()">+ Add File</button>
           </div>
 
@@ -369,7 +369,7 @@
       <section id="tab-branches" class="tab-pane">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
           <h3 style="font-size: 1rem; font-weight: 600;">Repository Branches</h3>
-          <button class="btn btn-primary" onclick="promptNewBranch()">+ New Branch</button>
+          <button class="btn btn-primary" onclick="openNewBranchModal()">+ New Branch</button>
         </div>
 
         <div class="file-browser-card">
@@ -542,6 +542,109 @@
           <div class="modal-footer">
             <button type="button" class="btn modal-close-btn">Cancel</button>
             <button type="submit" class="btn btn-primary">Create and Stage File</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Create New Branch Modal (In-Page Modal - Never Triggers Full-Screen Loss / Blur) -->
+    <div id="new-branch-modal" class="modal-backdrop">
+      <div class="modal-window" style="max-width: 480px;">
+        <div class="modal-header">
+          <div class="modal-title" style="display: flex; align-items: center; gap: 0.5rem;">
+            <span>🌿</span>
+            <span>Create New Branch</span>
+          </div>
+          <button type="button" class="btn btn-sm modal-close-btn">✕</button>
+        </div>
+        <form onsubmit="submitNewBranch(event)">
+          <div class="modal-body">
+            <div style="margin-bottom: 0.85rem;">
+              <label style="display: block; font-size: 0.75rem; font-weight: 600; color: var(--text-dim); margin-bottom: 0.35rem;">Branch Name *</label>
+              <input type="text" id="new-branch-name-input" required placeholder="e.g. fix/styling or feature/dashboard" style="width: 100%; font-family: var(--font-mono);" />
+            </div>
+            <div style="font-size: 0.8rem; color: var(--text-muted); background: var(--bg-surface); padding: 0.65rem 0.85rem; border-radius: 6px; border: 1px solid var(--border-color); line-height: 1.4;">
+              Branch will be created based on <strong style="color: var(--accent-cyan); font-family: var(--font-mono);" id="new-branch-base-display">main</strong> and your workspace will automatically switch to it.
+            </div>
+          </div>
+          <div class="modal-footer" style="display: flex; justify-content: flex-end; gap: 0.5rem;">
+            <button type="button" class="btn modal-close-btn">Cancel</button>
+            <button type="submit" class="btn btn-primary">Create & Switch Branch</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Add Contributor Modal (In-Page Modal) -->
+    <div id="new-contributor-modal" class="modal-backdrop">
+      <div class="modal-window" style="max-width: 440px;">
+        <div class="modal-header">
+          <div class="modal-title" style="display: flex; align-items: center; gap: 0.5rem;">
+            <span>👥</span>
+            <span>Add Workshop Contributor</span>
+          </div>
+          <button type="button" class="btn btn-sm modal-close-btn">✕</button>
+        </div>
+        <form onsubmit="submitNewContributor(event)">
+          <div class="modal-body">
+            <div style="margin-bottom: 0.85rem;">
+              <label style="display: block; font-size: 0.75rem; font-weight: 600; color: var(--text-dim); margin-bottom: 0.35rem;">Contributor Name *</label>
+              <input type="text" id="new-contributor-name-input" required placeholder="e.g. Sarah, Alex, or your name" style="width: 100%;" />
+            </div>
+            <div style="margin-bottom: 0.85rem;">
+              <label style="display: block; font-size: 0.75rem; font-weight: 600; color: var(--text-dim); margin-bottom: 0.35rem;">Student ID / Roll (optional)</label>
+              <input type="text" id="new-contributor-roll-input" placeholder="e.g. CS2026-042" style="width: 100%; font-family: var(--font-mono);" />
+            </div>
+          </div>
+          <div class="modal-footer" style="display: flex; justify-content: flex-end; gap: 0.5rem;">
+            <button type="button" class="btn modal-close-btn">Cancel</button>
+            <button type="submit" class="btn btn-cyan">Add Contributor</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Reusable Confirmation Modal (Never Triggers Full-Screen Loss / Blur) -->
+    <div id="confirm-action-modal" class="modal-backdrop" style="z-index: 1000000;">
+      <div class="modal-window" style="max-width: 460px;">
+        <div class="modal-header">
+          <div id="confirm-modal-title" class="modal-title" style="display: flex; align-items: center; gap: 0.5rem;">
+            <span>⚠️</span>
+            <span>Confirm Action</span>
+          </div>
+          <button type="button" class="btn btn-sm modal-close-btn">✕</button>
+        </div>
+        <div class="modal-body">
+          <p id="confirm-modal-message" style="color: var(--text-main); font-size: 0.9rem; line-height: 1.5; margin: 0;"></p>
+        </div>
+        <div class="modal-footer" style="display: flex; justify-content: flex-end; gap: 0.5rem;">
+          <button type="button" class="btn modal-close-btn">Cancel</button>
+          <button type="button" id="confirm-modal-ok-btn" class="btn btn-danger" onclick="executeConfirmAction()">Confirm</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Admin Adjust XP Modal -->
+    <div id="admin-adjust-xp-modal" class="modal-backdrop" style="z-index: 1000000;">
+      <div class="modal-window" style="max-width: 440px;">
+        <div class="modal-header">
+          <div class="modal-title" style="display: flex; align-items: center; gap: 0.5rem;">
+            <span>⭐</span>
+            <span id="adjust-xp-modal-title">Adjust Participant XP</span>
+          </div>
+          <button type="button" class="btn btn-sm modal-close-btn">✕</button>
+        </div>
+        <form onsubmit="submitAdjustXP(event)">
+          <div class="modal-body">
+            <p id="adjust-xp-modal-desc" style="color: var(--text-dim); font-size: 0.85rem; margin-bottom: 0.85rem; line-height: 1.4;"></p>
+            <div>
+              <label style="display: block; font-size: 0.75rem; font-weight: 600; color: var(--text-dim); margin-bottom: 0.35rem;">XP Delta (e.g. +50 or -30) *</label>
+              <input type="text" id="adjust-xp-delta-input" required placeholder="+50" style="width: 100%; font-family: var(--font-mono); font-size: 1rem;" />
+            </div>
+          </div>
+          <div class="modal-footer" style="display: flex; justify-content: flex-end; gap: 0.5rem;">
+            <button type="button" class="btn modal-close-btn">Cancel</button>
+            <button type="submit" class="btn btn-primary">Apply XP</button>
           </div>
         </form>
       </div>
