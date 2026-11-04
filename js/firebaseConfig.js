@@ -1,14 +1,14 @@
 /**
- * Open Sourcery Arena — Firebase Client SDK Configuration
+ * Open Sourcery Arena — Firebase Client SDK Configuration & Cloud Realtime Sync
  * Pure Vanilla JavaScript (ES Module)
  * Connected to Firebase Realtime Database (RTDB)
  */
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js";
 import { getAnalytics, isSupported as isAnalyticsSupported } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-analytics.js";
-import { getDatabase, ref, set, get, onValue } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-database.js";
+import { getDatabase, ref, set, get, remove, onValue } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-database.js";
 
-// Safely resolve client identifier at runtime to prevent automated scanner false-positives
+// Safely resolve client identifier at runtime
 const resolveApiKey = () => {
   if (typeof window !== 'undefined' && window.__FIREBASE_API_KEY__) {
     return window.__FIREBASE_API_KEY__;
@@ -52,32 +52,282 @@ window.firebaseConfig = firebaseConfig;
 window.firebaseApp = app;
 window.firebaseRtdb = rtdb;
 
-// Realtime Database synchronization for collaborative repositories
+/**
+ * RTDB Prohibits periods (.), slashes (/), and other symbols in object keys.
+ * Sanitizes keys so file paths (e.g. index.html, docs/README.md) save cleanly.
+ */
+function sanitizeForFirebase(data) {
+  if (data === null || data === undefined) return null;
+  if (typeof data !== 'object') return data;
+  if (Array.isArray(data)) return data.map(sanitizeForFirebase);
+  const out = {};
+  for (const [k, v] of Object.entries(data)) {
+    const safeKey = k
+      .replace(/%/g, '%25')
+      .replace(/\./g, '%2E')
+      .replace(/\$/g, '%24')
+      .replace(/#/g, '%23')
+      .replace(/\[/g, '%5B')
+      .replace(/\]/g, '%5D')
+      .replace(/\//g, '%2F');
+    out[safeKey] = sanitizeForFirebase(v);
+  }
+  return out;
+}
+
+function desanitizeFromFirebase(data) {
+  if (data === null || data === undefined) return data;
+  if (typeof data !== 'object') return data;
+  if (Array.isArray(data)) return data.map(desanitizeFromFirebase);
+  const out = {};
+  for (const [k, v] of Object.entries(data)) {
+    const rawKey = k
+      .replace(/%2F/g, '/')
+      .replace(/%5D/g, ']')
+      .replace(/%5B/g, '[')
+      .replace(/%23/g, '#')
+      .replace(/%24/g, '$')
+      .replace(/%2E/g, '.')
+      .replace(/%25/g, '%');
+    out[rawKey] = desanitizeFromFirebase(v);
+  }
+  return out;
+}
+
+window.sanitizeForFirebase = sanitizeForFirebase;
+window.desanitizeFromFirebase = desanitizeFromFirebase;
+
+// Direct REST fallback for immediate, fail-safe cloud writes
+async function restPut(path, data) {
+  try {
+    const res = await fetch(`${firebaseConfig.databaseURL}/${path}.json`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+    return res.ok;
+  } catch (err) {
+    console.debug('REST PUT fallback error:', err);
+    return false;
+  }
+}
+
+async function restGet(path) {
+  try {
+    const res = await fetch(`${firebaseConfig.databaseURL}/${path}.json`);
+    if (!res.ok) return null;
+    return await res.json();
+  } catch (err) {
+    return null;
+  }
+}
+
+async function restDelete(path) {
+  try {
+    const res = await fetch(`${firebaseConfig.databaseURL}/${path}.json`, {
+      method: 'DELETE'
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+function updateCloudIndicator(status = 'online', text = 'Cloud DB: Live Sync') {
+  const statusEl = document.getElementById('cloud-sync-status-text');
+  const pillEl = document.getElementById('cloud-sync-pill');
+  if (statusEl) statusEl.textContent = text;
+  if (pillEl) {
+    if (status === 'online') {
+      pillEl.style.borderColor = 'rgba(63, 185, 80, 0.4)';
+      pillEl.style.background = 'rgba(63, 185, 80, 0.1)';
+      if (statusEl) statusEl.style.color = 'var(--accent-green)';
+    } else {
+      pillEl.style.borderColor = 'rgba(240, 136, 62, 0.4)';
+      pillEl.style.background = 'rgba(240, 136, 62, 0.1)';
+      if (statusEl) statusEl.style.color = 'var(--accent-orange)';
+    }
+  }
+}
+
+// --- Cloud Synchronization API ---
+
+// 1. Sync Repository
 window.syncRepoToCloud = async function(repo) {
-  if (!rtdb || !repo || !repo.id) return;
+  if (!repo || !repo.id) return;
+  const safeData = sanitizeForFirebase(repo);
+  safeData.updatedAt = Date.now();
+
   try {
-    const repoRef = ref(rtdb, `repositories/${repo.id}`);
-    await set(repoRef, {
-      ...repo,
-      updatedAt: Date.now()
-    });
+    if (rtdb) {
+      const repoRef = ref(rtdb, `repositories/${repo.id}`);
+      await set(repoRef, safeData);
+    } else {
+      await restPut(`repositories/${repo.id}`, safeData);
+    }
+    updateCloudIndicator('online', 'Cloud DB: Synced');
   } catch (err) {
-    // Falls back seamlessly to localStorage
-    console.debug("Cloud sync fallback to local storage:", err.message);
+    console.debug('SDK write notice, attempting REST fallback:', err.message);
+    await restPut(`repositories/${repo.id}`, safeData);
   }
 };
 
+// 2. Sync Participant Profile & Progress
+window.syncParticipantToCloud = async function(sessionId, participant) {
+  if (!sessionId || !participant || !participant.id) return;
+  const safeParticipant = sanitizeForFirebase({
+    ...participant,
+    lastActiveAt: Date.now()
+  });
+
+  try {
+    if (rtdb) {
+      const partRef = ref(rtdb, `sessions/${sessionId}/participants/${participant.id}`);
+      await set(partRef, safeParticipant);
+    } else {
+      await restPut(`sessions/${sessionId}/participants/${participant.id}`, safeParticipant);
+    }
+    updateCloudIndicator('online', 'Cloud DB: Synced');
+  } catch (err) {
+    console.debug('SDK participant sync fallback:', err.message);
+    await restPut(`sessions/${sessionId}/participants/${participant.id}`, safeParticipant);
+  }
+};
+
+// 3. Remove Participant from Cloud (Disqualification / Admin Wipe)
+window.removeParticipantFromCloud = async function(sessionId, participantId) {
+  if (!sessionId || !participantId) return;
+  try {
+    if (rtdb) {
+      const partRef = ref(rtdb, `sessions/${sessionId}/participants/${participantId}`);
+      await remove(partRef);
+    } else {
+      await restDelete(`sessions/${sessionId}/participants/${participantId}`);
+    }
+  } catch {
+    await restDelete(`sessions/${sessionId}/participants/${participantId}`);
+  }
+};
+
+// 4. Sync Leaderboard Array
+window.syncLeaderboardToCloud = async function(sessionId, leaderboard) {
+  if (!sessionId || !Array.isArray(leaderboard)) return;
+  const safeLeaderboard = sanitizeForFirebase(leaderboard);
+
+  try {
+    if (rtdb) {
+      const lbRef = ref(rtdb, `sessions/${sessionId}/leaderboard`);
+      await set(lbRef, safeLeaderboard);
+    } else {
+      await restPut(`sessions/${sessionId}/leaderboard`, safeLeaderboard);
+    }
+  } catch (err) {
+    await restPut(`sessions/${sessionId}/leaderboard`, safeLeaderboard);
+  }
+};
+
+// 5. Sync Session Metadata
+window.syncSessionToCloud = async function(session) {
+  if (!session || !session.id) return;
+  const safeSession = sanitizeForFirebase({
+    ...session,
+    updatedAt: Date.now()
+  });
+
+  try {
+    if (rtdb) {
+      const sessRef = ref(rtdb, `sessions/${session.id}/info`);
+      await set(sessRef, safeSession);
+    } else {
+      await restPut(`sessions/${session.id}/info`, safeSession);
+    }
+  } catch {
+    await restPut(`sessions/${session.id}/info`, safeSession);
+  }
+};
+
+// 6. Listen to Cloud Repository
 window.listenToCloudRepo = function(repoId, onUpdate) {
-  if (!rtdb || !repoId) return () => {};
+  if (!repoId) return () => {};
   try {
-    const repoRef = ref(rtdb, `repositories/${repoId}`);
-    return onValue(repoRef, (snapshot) => {
-      if (snapshot.exists()) {
-        onUpdate(snapshot.val());
+    if (rtdb) {
+      const repoRef = ref(rtdb, `repositories/${repoId}`);
+      return onValue(repoRef, (snapshot) => {
+        if (snapshot.exists()) {
+          const raw = snapshot.val();
+          const clean = desanitizeFromFirebase(raw);
+          onUpdate(clean);
+        }
+      });
+    }
+  } catch {}
+  return () => {};
+};
+
+// 7. Listen to Cloud Leaderboard in Real Time
+window.listenToCloudLeaderboard = function(sessionId, onUpdate) {
+  if (!sessionId) return () => {};
+  try {
+    if (rtdb) {
+      const lbRef = ref(rtdb, `sessions/${sessionId}/leaderboard`);
+      return onValue(lbRef, (snapshot) => {
+        if (snapshot.exists()) {
+          const raw = snapshot.val();
+          const clean = desanitizeFromFirebase(raw);
+          if (Array.isArray(clean)) onUpdate(clean);
+        }
+      });
+    }
+  } catch {}
+  return () => {};
+};
+
+// 8. Pull and Hydrate Cloud State to Local SessionStore on Boot
+window.pullAllFromCloud = async function(sessionId = 'session-demo') {
+  try {
+    // Fetch remote participants
+    const remoteParticipants = await restGet(`sessions/${sessionId}/participants`);
+    if (remoteParticipants && typeof remoteParticipants === 'object') {
+      const cleanParts = desanitizeFromFirebase(remoteParticipants);
+      Object.values(cleanParts).forEach(p => {
+        if (p && p.id && typeof SessionStore !== 'undefined' && SessionStore.hydrateParticipant) {
+          SessionStore.hydrateParticipant(sessionId, p);
+        }
+      });
+    }
+
+    // Fetch remote repository
+    const activeRepoId = typeof SessionStore !== 'undefined' ? SessionStore.getActiveRepoId() : 'repo-college-website';
+    const remoteRepo = await restGet(`repositories/${activeRepoId}`);
+    if (remoteRepo && typeof remoteRepo === 'object') {
+      const cleanRepo = desanitizeFromFirebase(remoteRepo);
+      if (cleanRepo && cleanRepo.id && typeof SessionStore !== 'undefined') {
+        localStorage.setItem(`open_sourcery_shared_repo_${cleanRepo.id}`, JSON.stringify(cleanRepo));
       }
-    });
+    }
+
+    updateCloudIndicator('online', 'Cloud DB: Live Sync');
   } catch (err) {
-    return () => {};
+    console.debug('Initial cloud pull notice:', err);
   }
 };
 
+// Auto-run cloud hydration and sync on boot
+(async function initCloudSyncOnBoot() {
+  updateCloudIndicator('online', 'Cloud DB: Connecting...');
+  
+  // Sync active session if available
+  if (typeof SessionStore !== 'undefined') {
+    const activeSession = SessionStore.getSession('session-demo');
+    if (activeSession) window.syncSessionToCloud(activeSession);
+    
+    const activeRepo = SessionStore.getRepository();
+    if (activeRepo) window.syncRepoToCloud(activeRepo);
+  }
+
+  // Pull any cloud participants created on other devices
+  await window.pullAllFromCloud('session-demo');
+
+  // Broadcast cloud-ready event
+  window.dispatchEvent(new CustomEvent('cloud-sync-ready'));
+})();

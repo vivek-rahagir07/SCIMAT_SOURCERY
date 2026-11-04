@@ -76,6 +76,15 @@ function initApp() {
   currentContributor = SessionStore.getActiveContributor();
   loadActiveRepository();
   renderAll();
+
+  // Attach cloud realtime listeners when cloud is ready
+  window.addEventListener('cloud-sync-ready', () => {
+    if (typeof window.listenToCloudLeaderboard === 'function') {
+      window.listenToCloudLeaderboard('session-demo', () => {
+        updateLeaderboardUI();
+      });
+    }
+  });
 }
 
 function switchOnboardingMode(mode) {

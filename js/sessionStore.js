@@ -63,6 +63,9 @@ class SessionStore {
   static saveSession(session) {
     localStorage.setItem(`${STORAGE_PREFIX}session_${session.id}`, JSON.stringify(session));
     this.broadcast({ type: 'SESSION_UPDATED', session });
+    if (typeof window !== 'undefined' && typeof window.syncSessionToCloud === 'function') {
+      window.syncSessionToCloud(session);
+    }
   }
 
   // --- Multi-Repository Management ---
@@ -358,6 +361,17 @@ class SessionStore {
 
     this.recordActivity(this.getActiveRepoId(), name.trim(), 'session', `Registered for workshop challenge`);
     this.broadcast({ type: 'PARTICIPANT_REGISTERED', participant: newParticipant });
+
+    // Sync participant and updated leaderboard to Firebase Cloud Database
+    if (typeof window !== 'undefined') {
+      if (typeof window.syncParticipantToCloud === 'function') {
+        window.syncParticipantToCloud(sessionId, newParticipant);
+      }
+      if (typeof window.syncLeaderboardToCloud === 'function') {
+        window.syncLeaderboardToCloud(sessionId, this.getLeaderboard(sessionId));
+      }
+    }
+
     return { success: true, participant: newParticipant, message: 'Welcome to Open Sourcery Arena!' };
   }
 
@@ -391,6 +405,10 @@ class SessionStore {
     );
     this.recordActivity(this.getActiveRepoId(), participant.name, 'security', `Focus alert #${participant.focusViolations} (${reason})`);
     this.broadcast({ type: 'FOCUS_VIOLATION', participantId: participant.id, violations: participant.focusViolations });
+
+    if (typeof window !== 'undefined' && typeof window.syncParticipantToCloud === 'function') {
+      window.syncParticipantToCloud(sessionId, participant);
+    }
   }
 
   static disqualifyParticipant(sessionId, participantId, reason = 'Tab switch / window minimized') {
@@ -413,6 +431,16 @@ class SessionStore {
 
     this.recordActivity(this.getActiveRepoId(), participant.name, 'security', `🚨 DISQUALIFIED (OUT OF GAME): ${reason}`);
     this.broadcast({ type: 'PARTICIPANT_DISQUALIFIED', participantId: participant.id, name: participant.name, reason });
+
+    if (typeof window !== 'undefined') {
+      if (typeof window.syncParticipantToCloud === 'function') {
+        window.syncParticipantToCloud(sessionId, participant);
+      }
+      if (typeof window.syncLeaderboardToCloud === 'function') {
+        window.syncLeaderboardToCloud(sessionId, this.getLeaderboard(sessionId));
+      }
+    }
+
     return { success: true, participant };
   }
 
@@ -431,6 +459,16 @@ class SessionStore {
 
     this.recordActivity(this.getActiveRepoId(), 'Admin (Vivek)', 'audit', `Reinstated participant ${participant.name} to active sprint.`);
     this.broadcast({ type: 'PARTICIPANT_REINSTATED', participantId: participant.id, name: participant.name });
+
+    if (typeof window !== 'undefined') {
+      if (typeof window.syncParticipantToCloud === 'function') {
+        window.syncParticipantToCloud(sessionId, participant);
+      }
+      if (typeof window.syncLeaderboardToCloud === 'function') {
+        window.syncLeaderboardToCloud(sessionId, this.getLeaderboard(sessionId));
+      }
+    }
+
     return { success: true, participant };
   }
 
@@ -474,6 +512,17 @@ class SessionStore {
 
     this.recordActivity(this.getActiveRepoId(), participant.name, 'mission', `Completed Mission ${mission.number}: ${mission.title} (+${mission.xp} XP)`);
     this.broadcast({ type: 'MISSION_AWARDED', sessionId, participantId: participant.id, missionId, newXP });
+
+    // Sync updated XP and leaderboard to Firebase Cloud Database
+    if (typeof window !== 'undefined') {
+      if (typeof window.syncParticipantToCloud === 'function') {
+        window.syncParticipantToCloud(sessionId, participant);
+      }
+      if (typeof window.syncLeaderboardToCloud === 'function') {
+        window.syncLeaderboardToCloud(sessionId, this.getLeaderboard(sessionId));
+      }
+    }
+
     return {
       success: true,
       xpAwarded: mission.xp,
@@ -508,6 +557,16 @@ class SessionStore {
     const sign = deltaXP >= 0 ? '+' : '';
     this.recordActivity(this.getActiveRepoId(), 'Admin (Vivek)', 'audit', `Adjusted XP for ${participant.name}: ${sign}${deltaXP} XP (${reason}). Total: ${newXP} XP`);
     this.broadcast({ type: 'XP_ADJUSTED', sessionId, participantId: participant.id, newXP, deltaXP });
+
+    if (typeof window !== 'undefined') {
+      if (typeof window.syncParticipantToCloud === 'function') {
+        window.syncParticipantToCloud(sessionId, participant);
+      }
+      if (typeof window.syncLeaderboardToCloud === 'function') {
+        window.syncLeaderboardToCloud(sessionId, this.getLeaderboard(sessionId));
+      }
+    }
+
     return { success: true, newXP, deltaXP };
   }
 
@@ -546,7 +605,36 @@ class SessionStore {
 
     this.recordActivity(this.getActiveRepoId(), 'Admin (Vivek)', 'audit', `Disqualified/removed participant ${name} from leaderboard.`);
     this.broadcast({ type: 'PARTICIPANT_REMOVED', sessionId, participantId: realId, name });
+
+    if (typeof window !== 'undefined') {
+      if (typeof window.removeParticipantFromCloud === 'function') {
+        window.removeParticipantFromCloud(sessionId, realId);
+      }
+      if (typeof window.syncLeaderboardToCloud === 'function') {
+        window.syncLeaderboardToCloud(sessionId, this.getLeaderboard(sessionId));
+      }
+    }
+
     return { success: true, name };
+  }
+
+  static hydrateParticipant(sessionId, remoteParticipant) {
+    if (!remoteParticipant || !remoteParticipant.id) return;
+    const local = this.getParticipant(sessionId, remoteParticipant.id);
+    if (!local || (remoteParticipant.verifiedXP || 0) > (local.verifiedXP || 0)) {
+      localStorage.setItem(
+        `${STORAGE_PREFIX}participant_${sessionId}_${remoteParticipant.id}`,
+        JSON.stringify(remoteParticipant)
+      );
+      if (remoteParticipant.name) {
+        this.addCustomContributor(
+          remoteParticipant.name,
+          remoteParticipant.rollNumber || '',
+          remoteParticipant.githubUsername || '',
+          remoteParticipant.email || ''
+        );
+      }
+    }
   }
 
   static getLeaderboard(sessionId = 'session-demo') {

@@ -115,11 +115,15 @@
         </div>
       </div>
 
-      <!-- Live Workshop Countdown Timer (15 Minutes) -->
-      <div class="nav-center">
+      <!-- Live Workshop Countdown Timer (15 Minutes) & Cloud Database Sync Indicator -->
+      <div class="nav-center" style="display: flex; gap: 0.5rem; align-items: center;">
         <div class="timer-pill" title="15-minute challenge timer">
           <span>⏱️</span>
           <span id="session-countdown">15:00</span>
+        </div>
+        <div id="cloud-sync-pill" class="timer-pill" style="border-color: rgba(63, 185, 80, 0.4); background: rgba(63, 185, 80, 0.1);" title="Firebase Realtime Database Connected & Syncing">
+          <span style="font-size: 0.75rem;">⚡</span>
+          <span id="cloud-sync-status-text" style="color: var(--accent-green); font-size: 0.75rem; font-weight: 600;">Cloud DB: Live Sync</span>
         </div>
       </div>
 
