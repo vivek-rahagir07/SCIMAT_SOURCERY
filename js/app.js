@@ -137,6 +137,9 @@ function submitLandingAdminLogin(e) {
 
     loadActiveRepository();
     renderAll();
+    if (typeof window.refreshLiveLeaderboardNow === 'function') {
+      window.refreshLiveLeaderboardNow();
+    }
     updateLeaderboardUI();
     updateAdminUI();
     openModal('admin-modal');
@@ -2270,6 +2273,9 @@ if (typeof globalThis !== 'undefined') {
 // --- Leaderboard & Participant Moderation ---
 
 function openPublicLeaderboardModal() {
+  if (typeof window.refreshLiveLeaderboardNow === 'function') {
+    window.refreshLiveLeaderboardNow();
+  }
   updateLeaderboardUI();
   openModal('public-leaderboard-modal');
 }
@@ -2700,6 +2706,9 @@ function isAdminAuthenticated() {
 
 function openAdminPortal() {
   if (isAdminAuthenticated()) {
+    if (typeof window.refreshLiveLeaderboardNow === 'function') {
+      window.refreshLiveLeaderboardNow();
+    }
     updateLeaderboardUI();
     updateAdminUI();
     openModal('admin-modal');
