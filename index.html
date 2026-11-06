@@ -1033,6 +1033,42 @@
       </div>
     </div>
 
+    <!-- GitHub Command Qualification Check (Fork & Accept Contribution) -->
+    <div id="github-cmd-quiz-modal" class="modal-backdrop">
+      <div class="modal-window" style="max-width: 640px;">
+        <div class="modal-header" style="background: rgba(168, 85, 247, 0.12); border-bottom: 1px solid rgba(168, 85, 247, 0.35);">
+          <div class="modal-title" style="display: flex; align-items: center; gap: 0.5rem; color: #c084fc; font-weight: 800; font-size: 1.05rem;">
+            <span>🐙</span>
+            <span id="cmd-quiz-title">GitHub Command Qualification</span>
+          </div>
+          <button class="btn btn-sm modal-close-btn" onclick="closeGitHubCommandQuiz()">✕</button>
+        </div>
+        <div class="modal-body" style="padding: 1.25rem 1.5rem; max-height: 70vh; overflow-y: auto;">
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.25rem; background: var(--bg-tertiary); padding: 0.75rem 1rem; border-radius: var(--radius-sm); border: 1px solid var(--border-color); font-size: 0.82rem;">
+            <div>
+              <span style="color: var(--accent-cyan); font-weight: 700;">🎯 Command Verification:</span>
+              <span id="cmd-quiz-subtitle" style="color: var(--text-muted); margin-left: 0.35rem;">Score at least 60% (3/5) to proceed.</span>
+            </div>
+            <span class="badge" id="cmd-quiz-score-badge" style="background: rgba(168, 85, 247, 0.2); color: #c084fc; font-weight: 800;">5 Questions</span>
+          </div>
+          <div id="cmd-quiz-questions-container"></div>
+        </div>
+        <div class="modal-footer" style="display: flex; justify-content: space-between; align-items: center; gap: 1rem;">
+          <span id="cmd-quiz-status-feedback" style="font-size: 0.82rem; font-weight: 600; color: var(--text-muted);">
+            Answer all 5 questions (60% required to pass).
+          </span>
+          <div style="display: flex; gap: 0.5rem;">
+            <button id="cmd-quiz-retry-btn" class="btn btn-sm" onclick="retryGitHubCommandQuiz()" style="display: none;">
+              🔄 Try Again
+            </button>
+            <button id="cmd-quiz-proceed-btn" class="btn btn-primary" onclick="confirmGitHubCommandQuiz()" disabled style="font-weight: 700;">
+              Verify & Proceed 🚀
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- Time-Up / Final Score Submission Modal -->
     <div id="time-up-modal" class="modal-backdrop" style="backdrop-filter: blur(25px); background: rgba(5, 8, 15, 0.96); z-index: 999999;">
       <div class="modal-window" style="max-width: 500px; text-align: center; border: 2px solid var(--accent-cyan); box-shadow: 0 0 50px rgba(54, 228, 212, 0.35);">

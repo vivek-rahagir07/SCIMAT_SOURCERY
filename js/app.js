@@ -235,6 +235,9 @@ function completeParticipantEntry(regData) {
   // Mark registered
   localStorage.setItem('open_sourcery_user_registered', 'true');
   localStorage.setItem('open_sourcery_user_email', email);
+  if (!regResult.isReLogin) {
+    localStorage.removeItem('open_sourcery_gh_cmd_qualified');
+  }
 
   // Resume or start 15-minute challenge timer
   const totalMs = 15 * 60 * 1000;
@@ -536,6 +539,258 @@ function toggleStarRepo() {
   }
 }
 
+// 5 GitHub command questions for fork and contribution qualification (60% required)
+const GITHUB_COMMAND_QUESTIONS = [
+  {
+    question: "How do you download a copy of a remote GitHub repository to your local machine?",
+    options: [
+      "git clone <repository-url>",
+      "git fork <repository-url>",
+      "git pull --all <repository-url>",
+      "git remote add <repository-url>"
+    ],
+    correctIndex: 0,
+    explanation: "'git clone <url>' downloads the full repository and commit history from GitHub to your computer."
+  },
+  {
+    question: "When working with a forked repository, which command configures the original project as 'upstream'?",
+    options: [
+      "git remote add upstream <original-repo-url>",
+      "git branch -u upstream <original-repo-url>",
+      "git checkout --upstream <original-repo-url>",
+      "git link --parent <original-repo-url>"
+    ],
+    correctIndex: 0,
+    explanation: "'git remote add upstream <url>' tracks the central upstream repository to sync future updates."
+  },
+  {
+    question: "Which command creates and switches to a dedicated feature branch for your contribution?",
+    options: [
+      "git checkout -b feature-patch",
+      "git branch --switch feature-patch",
+      "git fork feature-patch",
+      "git push -b feature-patch"
+    ],
+    correctIndex: 0,
+    explanation: "'git checkout -b <name>' (or 'git switch -c <name>') creates and immediately switches to a new branch."
+  },
+  {
+    question: "After making and staging your changes, which command records them with an informative message?",
+    options: [
+      "git commit -m \"Fix typo in README\"",
+      "git save -m \"Fix typo in README\"",
+      "git record -m \"Fix typo in README\"",
+      "git upload -m \"Fix typo in README\""
+    ],
+    correctIndex: 0,
+    explanation: "'git commit -m \"message\"' creates a permanent commit in local Git history with your staged changes."
+  },
+  {
+    question: "How do you publish your branch commits to your personal fork on GitHub so maintainers can accept it?",
+    options: [
+      "git push origin feature-patch",
+      "git upload origin feature-patch",
+      "git merge upstream feature-patch",
+      "git commit --publish feature-patch"
+    ],
+    correctIndex: 0,
+    explanation: "'git push origin <branch>' publishes local commits to your GitHub fork so you can open a Pull Request."
+  }
+];
+
+let pendingQualifiedAction = null;
+let activeCmdQuizAnswers = {};
+
+function promptGitHubCommandQuiz(action) {
+  pendingQualifiedAction = action;
+  activeCmdQuizAnswers = {};
+
+  const titleEl = document.getElementById('cmd-quiz-title');
+  if (titleEl) {
+    titleEl.textContent = `${action.actionTitle || 'GitHub Command Qualification'} (60% Required)`;
+  }
+
+  const subEl = document.getElementById('cmd-quiz-subtitle');
+  if (subEl) {
+    subEl.textContent = `Score at least 60% (3/5) on GitHub commands to authorize ${action.actionName || 'this action'}.`;
+  }
+
+  const badgeEl = document.getElementById('cmd-quiz-score-badge');
+  if (badgeEl) {
+    badgeEl.textContent = '5 Questions';
+    badgeEl.style.background = 'rgba(168, 85, 247, 0.2)';
+    badgeEl.style.color = '#c084fc';
+  }
+
+  const statusEl = document.getElementById('cmd-quiz-status-feedback');
+  if (statusEl) {
+    statusEl.innerHTML = 'Answer all 5 questions. Score &ge; 60% (3/5) to proceed.';
+    statusEl.style.color = 'var(--text-muted)';
+  }
+
+  const proceedBtn = document.getElementById('cmd-quiz-proceed-btn');
+  if (proceedBtn) {
+    proceedBtn.disabled = true;
+    proceedBtn.textContent = 'Verify & Proceed 🚀';
+  }
+
+  const retryBtn = document.getElementById('cmd-quiz-retry-btn');
+  if (retryBtn) retryBtn.style.display = 'none';
+
+  renderGitHubCommandQuestions();
+  openModal('github-cmd-quiz-modal');
+}
+
+function renderGitHubCommandQuestions() {
+  const container = document.getElementById('cmd-quiz-questions-container');
+  if (!container) return;
+
+  container.innerHTML = GITHUB_COMMAND_QUESTIONS.map((q, qIdx) => `
+    <div class="quiz-question-box" id="cmd-q-${qIdx}">
+      <div class="quiz-question-header">
+        <span class="quiz-question-tag">Question ${qIdx + 1} of 5</span>
+        <span style="font-size: 0.72rem; color: var(--text-dim);">GitHub Command Knowledge</span>
+      </div>
+      <div class="quiz-question-title">${escapeHtml(q.question)}</div>
+      <div class="quiz-options-list">
+        ${q.options.map((opt, optIdx) => `
+          <div class="quiz-option-card" id="cmd-opt-${qIdx}-${optIdx}" onclick="handleCmdQuizOptionSelect(${qIdx}, ${optIdx})">
+            <span style="color: var(--accent-cyan); font-weight: 700; width: 18px;">${String.fromCharCode(65 + optIdx)}.</span>
+            <code style="flex: 1;">${escapeHtml(opt)}</code>
+          </div>
+        `).join('')}
+      </div>
+      <div id="cmd-exp-${qIdx}" class="quiz-explanation" style="display: none;"></div>
+    </div>
+  `).join('');
+}
+
+function handleCmdQuizOptionSelect(qIdx, selectedOptIdx) {
+  const q = GITHUB_COMMAND_QUESTIONS[qIdx];
+  if (!q || activeCmdQuizAnswers[qIdx] !== undefined) return;
+
+  activeCmdQuizAnswers[qIdx] = selectedOptIdx;
+  const isCorrect = selectedOptIdx === q.correctIndex;
+
+  const selectedEl = document.getElementById(`cmd-opt-${qIdx}-${selectedOptIdx}`);
+  const expEl = document.getElementById(`cmd-exp-${qIdx}`);
+
+  // Disable options for this question
+  q.options.forEach((_, optIdx) => {
+    const el = document.getElementById(`cmd-opt-${qIdx}-${optIdx}`);
+    if (el) el.classList.add('disabled');
+  });
+
+  if (isCorrect) {
+    if (selectedEl) selectedEl.classList.add('selected-correct');
+    if (expEl) {
+      expEl.innerHTML = `<strong style="color: var(--accent-green);">✓ Correct!</strong> ${escapeHtml(q.explanation)}`;
+      expEl.style.display = 'block';
+    }
+  } else {
+    if (selectedEl) selectedEl.classList.add('selected-incorrect');
+    const correctEl = document.getElementById(`cmd-opt-${qIdx}-${q.correctIndex}`);
+    if (correctEl) correctEl.classList.add('reveal-correct');
+    if (expEl) {
+      expEl.innerHTML = `<strong style="color: var(--accent-red);">✗ Incorrect.</strong> Correct command: <code>${escapeHtml(q.options[q.correctIndex])}</code>.<br />${escapeHtml(q.explanation)}`;
+      expEl.style.display = 'block';
+    }
+  }
+
+  // Check if all 5 answered
+  const answeredCount = Object.keys(activeCmdQuizAnswers).length;
+  if (answeredCount === GITHUB_COMMAND_QUESTIONS.length) {
+    let score = 0;
+    GITHUB_COMMAND_QUESTIONS.forEach((item, idx) => {
+      if (activeCmdQuizAnswers[idx] === item.correctIndex) score++;
+    });
+
+    const percent = Math.round((score / GITHUB_COMMAND_QUESTIONS.length) * 100);
+    const passed = percent >= 60; // 60% requirement (3 or more out of 5)
+
+    const badgeEl = document.getElementById('cmd-quiz-score-badge');
+    const statusEl = document.getElementById('cmd-quiz-status-feedback');
+    const proceedBtn = document.getElementById('cmd-quiz-proceed-btn');
+    const retryBtn = document.getElementById('cmd-quiz-retry-btn');
+
+    if (passed) {
+      if (badgeEl) {
+        badgeEl.textContent = `🎉 Score: ${score}/5 (${percent}%) - Passed!`;
+        badgeEl.style.background = 'rgba(34, 197, 94, 0.2)';
+        badgeEl.style.color = 'var(--accent-green)';
+      }
+      if (statusEl) {
+        statusEl.innerHTML = `<span style="color: var(--accent-green); font-weight: 700;">✓ Excellent! ${percent}% score achieved (60% required). Click Proceed!</span>`;
+      }
+      if (proceedBtn) {
+        proceedBtn.disabled = false;
+        proceedBtn.textContent = `Proceed with ${pendingQualifiedAction ? pendingQualifiedAction.actionName || 'Action' : 'Action'} 🚀`;
+      }
+      if (retryBtn) retryBtn.style.display = 'none';
+      triggerConfetti(60);
+    } else {
+      if (badgeEl) {
+        badgeEl.textContent = `❌ Score: ${score}/5 (${percent}%) - Failed`;
+        badgeEl.style.background = 'rgba(239, 68, 68, 0.2)';
+        badgeEl.style.color = 'var(--accent-red)';
+      }
+      if (statusEl) {
+        statusEl.innerHTML = `<span style="color: var(--accent-red); font-weight: 700;">Score: ${score}/5 (${percent}%). You need at least 60% (3/5). Review and try again!</span>`;
+      }
+      if (proceedBtn) {
+        proceedBtn.disabled = true;
+        proceedBtn.textContent = 'Score < 60% (Blocked)';
+      }
+      if (retryBtn) retryBtn.style.display = 'inline-flex';
+    }
+  }
+}
+
+function retryGitHubCommandQuiz() {
+  activeCmdQuizAnswers = {};
+  const badgeEl = document.getElementById('cmd-quiz-score-badge');
+  if (badgeEl) {
+    badgeEl.textContent = '5 Questions';
+    badgeEl.style.background = 'rgba(168, 85, 247, 0.2)';
+    badgeEl.style.color = '#c084fc';
+  }
+  const statusEl = document.getElementById('cmd-quiz-status-feedback');
+  if (statusEl) {
+    statusEl.innerHTML = 'Select your answers. 3/5 correct (60%) required to pass.';
+    statusEl.style.color = 'var(--text-muted)';
+  }
+  const proceedBtn = document.getElementById('cmd-quiz-proceed-btn');
+  if (proceedBtn) {
+    proceedBtn.disabled = true;
+    proceedBtn.textContent = 'Verify & Proceed 🚀';
+  }
+  const retryBtn = document.getElementById('cmd-quiz-retry-btn');
+  if (retryBtn) retryBtn.style.display = 'none';
+
+  renderGitHubCommandQuestions();
+}
+
+function confirmGitHubCommandQuiz() {
+  if (!pendingQualifiedAction) return;
+
+  // Mark qualified
+  localStorage.setItem('open_sourcery_gh_cmd_qualified', 'true');
+  closeModal('github-cmd-quiz-modal');
+
+  const action = pendingQualifiedAction;
+  pendingQualifiedAction = null;
+
+  if (typeof action.onPass === 'function') {
+    action.onPass();
+  }
+}
+
+function closeGitHubCommandQuiz() {
+  closeModal('github-cmd-quiz-modal');
+  pendingQualifiedAction = null;
+  showToast('GitHub command verification cancelled.', 'info');
+}
+
 function forkCurrentRepository() {
   const repoId = SessionStore.getActiveRepoId();
   const currentRepo = git.getState();
@@ -544,6 +799,22 @@ function forkCurrentRepository() {
     return;
   }
 
+  // Require 60% score on 5 GitHub command questions before forking
+  const isQualified = localStorage.getItem('open_sourcery_gh_cmd_qualified') === 'true';
+  if (!isQualified) {
+    promptGitHubCommandQuiz({
+      actionType: 'fork',
+      actionTitle: 'Fork Repository',
+      actionName: 'Fork',
+      onPass: () => executeForkRepository(repoId, currentRepo)
+    });
+    return;
+  }
+
+  executeForkRepository(repoId, currentRepo);
+}
+
+function executeForkRepository(repoId, currentRepo) {
   const res = SessionStore.forkRepository(repoId, currentContributor);
   if (res.success) {
     loadActiveRepository();
@@ -1686,6 +1957,22 @@ function addCommentToPR(prId) {
 }
 
 function submitPRReview(prId) {
+  // Check 60% GitHub command qualification before accepting contribution
+  const isQualified = localStorage.getItem('open_sourcery_gh_cmd_qualified') === 'true';
+  if (!isQualified) {
+    promptGitHubCommandQuiz({
+      actionType: 'approve_pr',
+      actionTitle: 'Accept Contribution (Approve PR)',
+      actionName: 'Approve',
+      onPass: () => executePRReview(prId)
+    });
+    return;
+  }
+
+  executePRReview(prId);
+}
+
+function executePRReview(prId) {
   const res = git.reviewPullRequest(prId, currentContributor, 'APPROVED', 'Looks good to me! Ready for merge.');
   saveActiveRepository();
   openPRModal(prId);
@@ -1694,6 +1981,22 @@ function submitPRReview(prId) {
 }
 
 function mergePRAction(prId) {
+  // Check 60% GitHub command qualification before merging contribution
+  const isQualified = localStorage.getItem('open_sourcery_gh_cmd_qualified') === 'true';
+  if (!isQualified) {
+    promptGitHubCommandQuiz({
+      actionType: 'merge_pr',
+      actionTitle: 'Accept Contribution (Merge PR)',
+      actionName: 'Merge PR',
+      onPass: () => executeMergePR(prId)
+    });
+    return;
+  }
+
+  executeMergePR(prId);
+}
+
+function executeMergePR(prId) {
   const res = git.mergePullRequest(prId, currentContributor);
   saveActiveRepository();
   renderAll();
