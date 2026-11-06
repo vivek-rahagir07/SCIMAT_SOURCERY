@@ -1,7 +1,4 @@
-/**
- * Open Sourcery Arena — Collaborative Git & GitHub Simulation Controller
- * Pure Vanilla JavaScript
- */
+// Open Sourcery Arena - Git & GitHub Workshop
 
 let activeRepo = null;
 let git = null;
@@ -38,10 +35,10 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 });
 
-// --- Admin Verification Credentials (Protected / Obfuscated) ---
+// Admin config
 const ADMIN_CONFIG = {
   email: 'vivek.yadav.25cse@bmu.edu.in',
-  token: 'cWF6cGxt' // base64 representation of master pass
+  token: 'cWF6cGxt' // base64 password
 };
 
 function verifyAdminCredentials(email, pass) {
@@ -187,7 +184,7 @@ function submitOnboardingRegistration(e) {
     return;
   }
 
-  // Constrain email domain strictly to @bmu.edu.in
+  // Validate college domain
   const cleanEmail = email.toLowerCase().trim();
   if (!cleanEmail.endsWith('@bmu.edu.in')) {
     showToast('Invalid Email ID! You must enter an official @bmu.edu.in college email address.', 'error');
@@ -198,7 +195,7 @@ function submitOnboardingRegistration(e) {
     return;
   }
 
-  // Prevent re-login if participant has already finished/submitted their assessment
+  // Block re-entry if already submitted
   const existingPart = SessionStore.getParticipantByEmail('session-demo', cleanEmail);
   const isAlreadySubmitted =
     localStorage.getItem(`open_sourcery_submitted_${cleanEmail}`) === 'true' ||
@@ -213,162 +210,8 @@ function submitOnboardingRegistration(e) {
     return;
   }
 
-  // Generate OTP and request verification
-  const otp = generateOtpCode();
-  pendingRegistration = {
-    name,
-    email: cleanEmail,
-    roll,
-    github,
-    otp,
-    createdAt: Date.now()
-  };
-
-  const emailDisplay = document.getElementById('otp-display-email');
-  if (emailDisplay) emailDisplay.textContent = cleanEmail;
-  const livePassDisplay = document.getElementById('otp-live-display-code');
-  if (livePassDisplay) livePassDisplay.textContent = otp;
-  const otpInput = document.getElementById('otp-input-code');
-  if (otpInput) {
-    otpInput.value = otp; // Pre-fill with active code for instant zero-friction verification
-    otpInput.style.borderColor = '';
-  }
-
-  sendOtpToEmail(cleanEmail, otp, name);
-  startOtpCountdown(300);
-  openModal('otp-verification-modal');
-  setTimeout(() => {
-    if (otpInput) {
-      otpInput.focus();
-      otpInput.select();
-    }
-  }, 150);
-}
-
-let pendingRegistration = null;
-let otpCountdownTimer = null;
-
-function autoFillOtpCode() {
-  if (!pendingRegistration) return;
-  const otpInput = document.getElementById('otp-input-code');
-  if (otpInput) {
-    otpInput.value = pendingRegistration.otp;
-    otpInput.focus();
-  }
-}
-
-function generateOtpCode() {
-  return Math.floor(100000 + Math.random() * 900000).toString();
-}
-
-async function sendOtpToEmail(email, otp, name) {
-  // 1. Sync to Firebase Cloud DB so proctors see active OTP in real-time
-  if (typeof window !== 'undefined' && typeof window.syncOtpToCloud === 'function') {
-    window.syncOtpToCloud('session-demo', email, otp, name);
-  }
-  try {
-    const cleanKey = email.toLowerCase().replace(/[^a-z0-9]/g, '_');
-    localStorage.setItem(`open_sourcery_active_otp_${cleanKey}`, JSON.stringify({ otp, email, name, time: Date.now() }));
-  } catch {}
-
-  // 2. Dispatch via free FormSubmit relay endpoint in background
-  try {
-    fetch(`https://formsubmit.co/ajax/${encodeURIComponent(email)}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json'
-      },
-      body: JSON.stringify({
-        _subject: `Open Sourcery Arena Passcode: ${otp}`,
-        name: name,
-        email: email,
-        passcode: otp,
-        message: `Your login verification passcode for the Open Sourcery Git & GitHub Arena is: ${otp}. Emergency master pass is BMU2025.`
-      })
-    }).catch(() => {});
-  } catch {}
-
-  // 3. Dispatch via EmailJS if configured
-  try {
-    if (typeof emailjs !== 'undefined' && window.__EMAILJS_PUBLIC_KEY__) {
-      emailjs.init(window.__EMAILJS_PUBLIC_KEY__);
-      await emailjs.send(window.__EMAILJS_SERVICE_ID__ || 'default_service', window.__EMAILJS_TEMPLATE_ID__ || 'template_otp', {
-        to_email: email,
-        to_name: name,
-        otp_code: otp
-      });
-    }
-  } catch (err) {
-    console.warn('EmailJS dispatch:', err);
-  }
-
-  // 4. Prominent toast notification with OTP code
-  showToast(`🔐 Passcode generated for ${email}: ${otp}`, 'info');
-}
-
-function startOtpCountdown(durationSeconds = 300) {
-  if (otpCountdownTimer) clearInterval(otpCountdownTimer);
-  let remaining = durationSeconds;
-  const timerEl = document.getElementById('otp-timer-seconds');
-  const resendBtn = document.getElementById('btn-resend-otp');
-  if (resendBtn) {
-    resendBtn.style.pointerEvents = 'none';
-    resendBtn.style.opacity = '0.5';
-  }
-
-  const update = () => {
-    if (!timerEl) return;
-    const mins = Math.floor(remaining / 60);
-    const secs = remaining % 60;
-    timerEl.textContent = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-    if (remaining <= 0) {
-      clearInterval(otpCountdownTimer);
-      if (resendBtn) {
-        resendBtn.style.pointerEvents = 'auto';
-        resendBtn.style.opacity = '1';
-      }
-    } else {
-      remaining--;
-    }
-  };
-  update();
-  otpCountdownTimer = setInterval(update, 1000);
-}
-
-function resendOtpCode() {
-  if (!pendingRegistration) return;
-  const newOtp = generateOtpCode();
-  pendingRegistration.otp = newOtp;
-  pendingRegistration.createdAt = Date.now();
-  sendOtpToEmail(pendingRegistration.email, newOtp, pendingRegistration.name);
-  startOtpCountdown(120);
-  showToast(`New OTP sent to ${pendingRegistration.email}!`, 'success');
-}
-
-function submitOtpVerification(e) {
-  if (e && e.preventDefault) e.preventDefault();
-  const input = document.getElementById('otp-input-code');
-  if (!input || !pendingRegistration) return;
-
-  const entered = input.value.trim().toUpperCase();
-  const isCorrect =
-    entered === pendingRegistration.otp ||
-    entered === 'BMU2025' ||
-    entered === '250025' ||
-    entered === '123456';
-
-  if (!isCorrect) {
-    showToast('Invalid OTP! Please check the 6-digit code or ask proctor.', 'error');
-    input.style.borderColor = 'var(--accent-red)';
-    input.focus();
-    return;
-  }
-
-  // Verified!
-  if (otpCountdownTimer) clearInterval(otpCountdownTimer);
-  closeModal('otp-verification-modal');
-  completeParticipantEntry(pendingRegistration);
+  // Complete registration and start sprint directly
+  completeParticipantEntry({ name, email: cleanEmail, roll, github });
 }
 
 function completeParticipantEntry(regData) {
@@ -3353,30 +3196,6 @@ function updateAdminUI() {
           <strong style="margin-left: 0.5rem;">${l.participantName}</strong>: ${l.reason}
         </div>
       `).join('');
-    }
-  }
-
-  // 3. Render Active Pending OTPs
-  const otpsEl = document.getElementById('admin-live-otps-container');
-  if (otpsEl) {
-    if (typeof window.fetchCloudOtps === 'function') {
-      window.fetchCloudOtps('session-demo').then(otps => {
-        if (!otps || otps.length === 0) {
-          otpsEl.innerHTML = '<div style="color: var(--text-dim); padding: 0.25rem;">No active pending OTPs. Master bypass code: <strong style="color: var(--accent-green); font-family: var(--font-mono);">BMU2025</strong></div>';
-          return;
-        }
-        otpsEl.innerHTML = otps.map(o => `
-          <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.35rem 0.5rem; border-bottom: 1px solid var(--border-color);">
-            <div>
-              <strong style="color: #fff;">${escapeHtml(o.name || 'Student')}</strong>
-              <span style="color: var(--text-dim); font-size: 0.75rem; margin-left: 0.4rem;">(${escapeHtml(o.email)})</span>
-            </div>
-            <div style="font-family: var(--font-mono); font-weight: 800; color: var(--accent-cyan); font-size: 0.95rem; background: var(--bg-tertiary); padding: 0.15rem 0.45rem; border-radius: 4px; border: 1px solid var(--border-color);">
-              ${escapeHtml(o.otp)}
-            </div>
-          </div>
-        `).join('');
-      }).catch(() => {});
     }
   }
 }

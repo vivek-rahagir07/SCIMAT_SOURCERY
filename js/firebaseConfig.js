@@ -1,9 +1,4 @@
-/**
- * Open Sourcery Arena — Firebase Realtime Database Engine
- * Pure Vanilla JavaScript (Non-Module, Zero-Dependency, 100% Reliable across http, https & file://)
- * Connected to Firebase Realtime Database (RTDB)
- */
-
+// Firebase realtime database sync
 (function (window) {
   'use strict';
 
@@ -33,9 +28,7 @@
 
   window.firebaseConfig = firebaseConfig;
 
-  /**
-   * Sanitizes object keys so file paths (. and /) don't trigger Firebase 400 Bad Request
-   */
+  // Clean keys for Firebase paths
   function sanitizeForFirebase(data) {
     if (data === null || data === undefined) return null;
     if (typeof data !== 'object') return data;
@@ -161,12 +154,11 @@
     window.refreshLiveLeaderboardNow();
   };
 
-  // 3b. Wipe All Cloud Data for Session
+  // Clear all data
   window.clearAllCloudData = async function(sessionId = 'session-demo') {
     try {
       await restDelete(`sessions/${sessionId}/participants`);
       await restDelete(`sessions/${sessionId}/leaderboard`);
-      await restDelete(`sessions/${sessionId}/otps`);
       if (typeof window.refreshLiveLeaderboardNow === 'function') {
         window.refreshLiveLeaderboardNow(sessionId);
       }
@@ -175,30 +167,7 @@
     }
   };
 
-  // 3c. Sync OTP to Cloud
-  window.syncOtpToCloud = async function(sessionId, email, otp, name) {
-    if (!sessionId || !email) return;
-    const cleanKey = email.toLowerCase().replace(/[^a-z0-9]/g, '_');
-    await restPut(`sessions/${sessionId}/otps/${cleanKey}`, {
-      email,
-      name,
-      otp,
-      createdAt: Date.now()
-    });
-  };
-
-  // 3d. Fetch Active Cloud OTPs for Admin
-  window.fetchCloudOtps = async function(sessionId = 'session-demo') {
-    try {
-      const raw = await restGet(`sessions/${sessionId}/otps`);
-      if (!raw || typeof raw !== 'object') return [];
-      return Object.values(raw).filter(item => item && item.otp);
-    } catch {
-      return [];
-    }
-  };
-
-  // 4. Sync Leaderboard
+  // Sync Leaderboard
   window.syncLeaderboardToCloud = async function(sessionId, leaderboard) {
     if (!sessionId || !Array.isArray(leaderboard)) return;
     const safeLeaderboard = sanitizeForFirebase(leaderboard);
